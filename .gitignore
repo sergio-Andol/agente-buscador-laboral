@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+buscador.lock
+log_buscador.txt
+vistos.json
+historial_trabajos.xlsx
+resultados/
+debug_indeed_cloudflare.png
+debug_indeed_cloudflare.html
+.env
