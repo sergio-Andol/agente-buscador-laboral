@@ -37,7 +37,7 @@ from bs4 import BeautifulSoup
 #               internet y SIN tocar el historial. Sirve para mostrar el
 #               proyecto o probar el formato sin depender de Bumeran/
 #               Computrabajo/Indeed.
-MODO_EJECUCION = "DEMO"  # "AUTO", "MANUAL", "TEST" o "DEMO"
+MODO_EJECUCION = "TEST"  # "AUTO", "MANUAL", "TEST" o "DEMO"
 
 # --- independientes de MODO_EJECUCION: se dejan como estaban ------------
 # True = activa Indeed.
@@ -179,6 +179,51 @@ MAX_POR_FUENTE = 20
 # mostrar en el Excel del dia (aunque siga apareciendo en las busquedas).
 HISTORIAL_JSON = "vistos.json"
 HISTORIAL_XLSX = "historial_trabajos.xlsx"
+
+# --- POSTULACION ASISTIDA/AUTOMATICA (segura) ---------------------------
+# "OFF"         -> no hace nada, comportamiento actual (default).
+# "ASISTIDA"    -> abre cada oferta POSTULAR HOY y llega hasta el
+#                  formulario, pero SIEMPRE se detiene antes de enviar.
+#                  La decision de mandarla la toma Sergio, a mano.
+# "AUTO_SEGURO" -> evalua condiciones de seguridad (sin alertas graves,
+#                  sin redirect externo, sin CAPTCHA, dominio propio de
+#                  Bumeran/Computrabajo). Con DRY_RUN_POSTULACION=True
+#                  solo simula (no toca nada real). Ver postular_oferta()
+#                  para la nota sobre por que, aunque exista este modo,
+#                  el envio real automatico desatendido no esta
+#                  implementado todavia.
+# "CONFIRMADA"  -> pregunta por consola, aviso por aviso, antes de
+#                  intentar enviar. SOLO funciona con MODO_EJECUCION=
+#                  "MANUAL" (alguien tiene que estar presente para
+#                  contestar el prompt); en AUTO/TEST/DEMO se desactiva
+#                  solo, para no dejar el script colgado esperando una
+#                  respuesta que nunca va a llegar. Ver postular_oferta()
+#                  para la nota sobre el click real todavia sin conectar.
+MODO_POSTULACION = "CONFIRMADA"  # "OFF", "ASISTIDA", "AUTO_SEGURO" o "CONFIRMADA"
+
+# True = ninguna postulacion real se envia, todo queda simulado/registrado.
+# Dejar en True hasta confiar en el criterio del agente.
+DRY_RUN_POSTULACION = True
+
+# Techo de seguridad: cuantas ofertas como maximo se procesan por corrida.
+MAX_POSTULACIONES_POR_CORRIDA = 1
+
+# False (default) = en MODO_EJECUCION="TEST" la postulacion no se procesa,
+# igual que ahora (solo se genera el Excel con las repetidas).
+# True = en TEST tambien se corre el flujo de postulacion (apertura,
+# chequeos de seguridad, y confirmacion si corresponde) sobre las ofertas
+# de ACCIONES -- para poder probarlo sin esperar ofertas nuevas reales.
+# Sigue respetando MAX_POSTULACIONES_POR_CORRIDA y DRY_RUN_POSTULACION, y
+# NUNCA toca vistos.json ni historial_trabajos.xlsx (eso ya esta separado
+# de esta funcion). Cada resultado queda marcado como prueba de TEST.
+PROBAR_POSTULACION_EN_TEST = False
+
+if MODO_POSTULACION not in ("OFF", "ASISTIDA", "AUTO_SEGURO", "CONFIRMADA"):
+    raise ValueError('MODO_POSTULACION debe ser "OFF", "ASISTIDA", "AUTO_SEGURO" o "CONFIRMADA"')
+
+# Log de cada intento de postulacion (uno por fila procesada), separado
+# del historial de avisos vistos.
+POSTULACIONES_LOG_XLSX = "postulaciones_log.xlsx"
 
 # Carpeta donde se guardan los Excel del dia (normales y de TEST),
 # organizados en subcarpetas por mes: resultados/YYYY-MM/. vistos.json,
@@ -1078,6 +1123,29 @@ def _actualizar_historial_xlsx(df_nuevas, hoy):
         print(f"  Aviso: no se pudo actualizar {HISTORIAL_XLSX}: {e}")
 
 
+POSTULACIONES_LOG_COLUMNAS = [
+    "fecha_hora", "titulo", "empresa", "fuente", "link", "accion_sugerida",
+    "estado_postulacion", "resultado_postulacion", "detalle_postulacion",
+]
+
+
+def _registrar_postulacion_log(registro):
+    """Agrega UNA fila (dict) a postulaciones_log.xlsx. Append-only, mismo
+    patron que _actualizar_historial_xlsx. Si falla, avisa y sigue: un
+    problema con el log no debe frenar el resto de la corrida."""
+    try:
+        log_previo = pd.read_excel(POSTULACIONES_LOG_XLSX)
+    except Exception:
+        log_previo = pd.DataFrame(columns=POSTULACIONES_LOG_COLUMNAS)
+
+    try:
+        fila_nueva = pd.DataFrame([registro], columns=POSTULACIONES_LOG_COLUMNAS)
+        log_actualizado = pd.concat([log_previo, fila_nueva], ignore_index=True)
+        log_actualizado.to_excel(POSTULACIONES_LOG_XLSX, index=False)
+    except Exception as e:
+        print(f"  Aviso: no se pudo actualizar {POSTULACIONES_LOG_XLSX}: {e}")
+
+
 _ORDEN_DECISION = {"POSTULAR": 0, "REVISAR": 1, "DESCARTAR": 2}
 
 
@@ -1174,13 +1242,13 @@ _FICHA_CATEGORIAS = {
 # de mas de una (ej. "Analista de Datos Junior"): la mas especifica gana.
 _FICHA_ORDEN_CATEGORIAS = ["datos", "supply_chain", "soporte", "junior_general"]
 
-_PERFIL_SERGIO_CONTENIDO_BASE = """Sergio Andolcetti.
-Estudiante de Ingeniería en Informática en UADE.
+_PERFIL_SERGIO_CONTENIDO_BASE = """Perfil de ejemplo.
+Estudiante de Ingeniería en Informática.
 Experiencia previa en Supply Chain, planificación, compras, abastecimiento, inventarios, coordinación operativa y mejora de procesos.
 Conocimientos técnicos: Python, SQL, Power BI, Excel, HTML, CSS, JavaScript.
 Intereses laborales: Data, análisis de datos, soporte IT, mesa de ayuda, QA/testing, análisis funcional, desarrollo web junior, automatización, procesos, supply chain y roles administrativos vinculados a tecnología.
 Idiomas: inglés intermedio e italiano básico.
-Preferencia de comunicación: no decir "no tengo experiencia"; enfocar experiencia transferible, aprendizaje, orden, análisis y ganas de crecer.
+Preferencia de comunicación: enfocar experiencia transferible, aprendizaje, orden, análisis y ganas de crecer.
 """
 
 
@@ -1475,6 +1543,598 @@ def ajustar_decision_por_descripcion(fila):
     return decision, motivo, prioridad
 
 
+# --- BANDEJA DE ACCIONES ---------------------------------------------------
+# Solo SUGIERE que hacer con cada aviso. No postula, no hace clic en nada,
+# no envia mensajes: arma la hoja ACCIONES para que la decision final la
+# tome Sergio a mano.
+ACCIONES_COLUMNAS = [
+    "accion_sugerida", "estado_accion", "titulo", "empresa", "fuente",
+    "categoria_detectada", "decision_sugerida", "prioridad", "motivo_decision",
+    "alertas_aviso", "mensaje_postulacion", "link", "requiere_revision_manual",
+]
+
+# Alertas que ameritan frenar del todo (posible estafa, o requisito que
+# claramente no se cumple). Si aparece alguna, la accion es NO ACCIONAR
+# sin importar si la decision de base era POSTULAR o REVISAR.
+_ALERTAS_GRAVES = [
+    "pagar para postular", "curso pago", "capacitación paga", "capacitacion paga",
+    "inscripción con costo", "inscripcion con costo", "zonajobs",
+    "5 años", "6 años", "7 años", "senior",
+]
+
+# Alertas que no descartan la oferta, pero conviene revisar antes de
+# mandar el mensaje (no son motivo de NO ACCIONAR por si solas).
+_ALERTAS_MODERADAS = [
+    "inglés avanzado", "ingles avanzado", "inglés c1", "ingles c1",
+    "ssr", "semi senior", "semi-senior", "contractor", "monotributo",
+    "excluyente", "más de 3 años", "mas de 3 años", "4 años",
+]
+
+_MENSAJE_GENERICO_DEFAULT = (
+    "Hola, me interesa postularme a la posición. Soy estudiante de Ingeniería en "
+    "Informática y cuento con experiencia en áreas operativas, análisis de "
+    "información, procesos y coordinación entre sectores. Me gustaría poder "
+    "aportar desde un perfil responsable, analítico y con muchas ganas de seguir "
+    "creciendo."
+)
+
+_MENSAJES_GENERICOS_POR_CATEGORIA = {
+    "Data / BI": (
+        "Hola, me interesa postularme a la posición. Soy estudiante de Ingeniería "
+        "en Informática y cuento con experiencia en análisis de información, "
+        "procesos y uso avanzado de Excel. Además, estoy fortaleciendo mis "
+        "conocimientos en SQL, Python y Power BI. Me gustaría poder aportar desde "
+        "un perfil analítico, ordenado y orientado a la mejora continua."
+    ),
+    "Soporte IT": (
+        "Hola, me interesa postularme a la posición. Soy estudiante de Ingeniería "
+        "en Informática y me interesa desarrollarme en soporte IT, resolución de "
+        "problemas y atención a usuarios. Cuento con experiencia en coordinación "
+        "operativa, análisis de información y seguimiento de procesos, además de "
+        "conocimientos técnicos en sistemas y herramientas digitales."
+    ),
+    "Supply Chain": (
+        "Hola, me interesa postularme a la posición. Cuento con experiencia en "
+        "Supply Chain, planificación, compras, abastecimiento e inventarios, "
+        "trabajando con Excel, análisis de información y coordinación entre "
+        "sectores. Me gustaría aportar desde un perfil ordenado, analítico y "
+        "orientado a procesos."
+    ),
+}
+
+
+def determinar_accion_sugerida(fila):
+    """Devuelve (accion_sugerida, estado_accion, mensaje_postulacion,
+    requiere_revision_manual) para un aviso POSTULAR o REVISAR. Reglas
+    simples, sin IA: no decide nada por si sola, solo ordena la bandeja."""
+    decision = fila.get("decision_sugerida", "")
+    alertas = str(fila.get("alertas_aviso", "") or "").lower()
+    categoria = fila.get("categoria_detectada", "") or ""
+    mensaje_existente = str(fila.get("mensaje_sugerido", "") or "").strip()
+
+    hay_alerta_grave = any(kw in alertas for kw in _ALERTAS_GRAVES)
+    hay_alerta_moderada = any(kw in alertas for kw in _ALERTAS_MODERADAS)
+
+    if hay_alerta_grave:
+        accion = "NO ACCIONAR"
+    elif decision == "POSTULAR":
+        accion = "REVISAR ANTES DE POSTULAR" if hay_alerta_moderada else "POSTULAR HOY"
+    else:  # REVISAR
+        accion = "REVISAR MANUALMENTE"
+
+    estado_accion = "pendiente"
+
+    if mensaje_existente:
+        mensaje_postulacion = mensaje_existente
+    else:
+        mensaje_postulacion = _MENSAJES_GENERICOS_POR_CATEGORIA.get(categoria, _MENSAJE_GENERICO_DEFAULT)
+
+    requiere_revision_manual = "no" if accion == "NO ACCIONAR" else "sí"
+
+    return accion, estado_accion, mensaje_postulacion, requiere_revision_manual
+
+
+def construir_acciones(nuevas):
+    """Arma el DataFrame de la hoja ACCIONES (solo POSTULAR/REVISAR; los
+    DESCARTAR no entran) y el conteo por tipo de accion. No modifica
+    'nuevas'. Nunca hace nada mas alla de armar esta tabla: no postula,
+    no envia nada, no abre formularios."""
+    conteo_base = {"POSTULAR HOY": 0, "REVISAR ANTES DE POSTULAR": 0,
+                   "REVISAR MANUALMENTE": 0, "NO ACCIONAR": 0}
+
+    acciones = nuevas[nuevas["decision_sugerida"].isin(["POSTULAR", "REVISAR"])].copy()
+    if acciones.empty:
+        return pd.DataFrame(columns=ACCIONES_COLUMNAS), conteo_base
+
+    resultado = acciones.apply(lambda f: pd.Series(determinar_accion_sugerida(f)), axis=1)
+    resultado.columns = ["accion_sugerida", "estado_accion", "mensaje_postulacion",
+                          "requiere_revision_manual"]
+    acciones = pd.concat([acciones.reset_index(drop=True), resultado.reset_index(drop=True)], axis=1)
+    acciones = acciones[ACCIONES_COLUMNAS]
+
+    conteo = conteo_base.copy()
+    conteo.update(acciones["accion_sugerida"].value_counts().to_dict())
+    return acciones, conteo
+
+
+# --- POSTULACION ASISTIDA/AUTOMATICA (segura) -----------------------------
+# Dominios propios donde SI tiene sentido intentar seguir el flujo de
+# postulacion. Cualquier otro dominio (aunque el 'link' venga marcado como
+# fuente Bumeran/Computrabajo por error) se trata como externo.
+_DOMINIOS_POSTULACION_PROPIOS = ["bumeran.com.ar", "computrabajo.com"]
+
+# Keywords de bloqueo (CAPTCHA/Cloudflare) reusadas de Bumeran/Indeed, para
+# no duplicar la lista de deteccion.
+_POSTULACION_BLOQUEO_KW = tuple(set(_BUMERAN_BLOQUEO_KW) | set(kw.lower() for kw in BLOQUEOS_INDEED))
+
+
+def _postulacion_es_segura(fila):
+    """Chequeo RAPIDO, sin abrir navegador: condiciones 1-4 del pedido
+    (accion_sugerida, decision_sugerida, alertas graves, dominio propio).
+    Devuelve (es_segura, motivo_si_no)."""
+    if fila.get("accion_sugerida") != "POSTULAR HOY":
+        return False, "accion_sugerida distinta de POSTULAR HOY"
+    if fila.get("decision_sugerida") != "POSTULAR":
+        return False, "decision_sugerida distinta de POSTULAR"
+
+    alertas = str(fila.get("alertas_aviso", "") or "").lower()
+    if any(kw in alertas for kw in _ALERTAS_GRAVES):
+        return False, "hay alertas graves en el aviso"
+
+    link = str(fila.get("link", "") or "").lower()
+    if not any(dominio in link for dominio in _DOMINIOS_POSTULACION_PROPIOS):
+        return False, "el link no pertenece a Bumeran ni Computrabajo"
+
+    return True, ""
+
+
+# --- ENVIO REAL (unico lugar del codigo que hace click en un boton de ---
+# --- postulacion de verdad) ----------------------------------------------
+# Textos candidatos para el boton de postulacion. Comparacion por texto
+# EXACTO (recortado, sin mayusculas), no por substring: asi "Postularme"
+# no matchea por error con "Postularme a otros empleos similares" o
+# links de navegacion parecidos.
+# "postulación rápida" / "postulacion rapida" se agregaron porque es el
+# texto REAL verificado en vivo del boton de Bumeran (no estaba en la
+# lista original: sin esto, la deteccion nunca encontraba nada en
+# Bumeran). "Postularme" se confirmo en vivo como el texto real de
+# Computrabajo, esa ya estaba en la lista.
+_TEXTOS_BOTON_POSTULACION = [
+    "postularme", "postular", "enviar postulación", "enviar postulacion",
+    "enviar candidatura", "aplicar", "ya estoy interesado",
+    "postulación rápida", "postulacion rapida",
+]
+
+# Señales de que hay algo que el agente no puede resolver solo (pregunta
+# obligatoria, adjunto, CAPTCHA): si aparece cualquiera, no se envia nada.
+_TEXTOS_BLOQUEO_FORMULARIO = [
+    "pregunta", "responder", "adjuntar", "subir cv", "captcha",
+    "verificación", "verificacion",
+]
+
+_TEXTOS_EXITO_POSTULACION = [
+    "postulación enviada", "postulacion enviada", "te postulaste",
+    "candidatura enviada", "recibimos tu postulación", "recibimos tu postulacion",
+    "ya estás postulado", "ya estas postulado",
+]
+
+
+def detectar_boton_postulacion(page, fuente):
+    """Busca el boton/enlace de postulacion en la pagina YA CARGADA, de
+    forma conservadora. NUNCA hace click. Compara texto exacto (recortado,
+    sin mayusculas) contra _TEXTOS_BOTON_POSTULACION sobre <button>, <a> y
+    [role='button'] visibles. Devuelve (handle, motivo):
+      (ElementHandle, "")  -> un solo candidato, claramente unico.
+      (None, "motivo")     -> nada (0 candidatos) o ambiguo (2+
+                               candidatos): nunca elige adivinando."""
+    try:
+        elementos = page.query_selector_all("button, a, [role='button']")
+    except Exception as e:
+        return None, f"No se pudieron leer los botones de la página: {e}"
+
+    candidatos = []
+    for el in elementos:
+        try:
+            if not el.is_visible():
+                continue
+            texto = (el.inner_text() or "").strip().lower()
+        except Exception:
+            continue
+        if texto in _TEXTOS_BOTON_POSTULACION:
+            candidatos.append((el, texto))
+
+    if not candidatos:
+        return None, (f"No se encontró ningún botón visible con alguno de estos "
+                       f"textos: {', '.join(_TEXTOS_BOTON_POSTULACION)}. (fuente: {fuente})")
+    if len(candidatos) > 1:
+        textos = ", ".join(sorted(set(t for _, t in candidatos)))
+        return None, (f"Se encontraron {len(candidatos)} botones candidatos "
+                       f"({textos}): ambiguo, no se puede elegir sin arriesgar un "
+                       f"click equivocado. (fuente: {fuente})")
+
+    return candidatos[0][0], ""
+
+
+def detectar_preguntas_o_bloqueos(page):
+    """Revisa la pagina ACTUAL en busca de señales de que hay que
+    completar algo que el agente no puede resolver solo: preguntas
+    obligatorias, campos obligatorios sin completar, adjuntos, CAPTCHA.
+    Nunca inventa una respuesta ni completa nada: si detecta cualquier
+    señal, devuelve (True, motivo) para frenar el envio."""
+    try:
+        cuerpo = (page.inner_text("body") or "").lower()
+    except Exception as e:
+        return True, f"No se pudo leer la página para revisar preguntas/bloqueos: {e}"
+
+    # "Preguntas frecuentes" es un link de footer presente en CASI TODAS
+    # las paginas de Bumeran/Computrabajo (FAQ del sitio, no del aviso):
+    # sin excluirlo, la palabra "pregunta" da falso positivo siempre y
+    # bloquea el envio en cualquier pagina normal. Verificado en vivo.
+    cuerpo_filtrado = cuerpo.replace("preguntas frecuentes", "")
+
+    for kw in _TEXTOS_BLOQUEO_FORMULARIO:
+        if kw in cuerpo_filtrado:
+            return True, f"Se detectó texto de posible pregunta/bloqueo: '{kw}'."
+
+    # campos obligatorios del formulario sin completar
+    try:
+        campos = page.query_selector_all(
+            "form textarea[required], form input[required], form select[required]"
+        )
+        for campo in campos:
+            try:
+                valor = (campo.input_value() or "").strip()
+            except Exception:
+                valor = ""
+            if not valor:
+                return True, "Hay un campo obligatorio del formulario sin completar."
+    except Exception:
+        pass
+
+    # preguntas/campos marcados con asterisco dentro de un formulario
+    try:
+        etiquetas = page.query_selector_all("form label, form span, form p, form legend")
+        for etq in etiquetas:
+            try:
+                texto = (etq.inner_text() or "").strip()
+            except Exception:
+                continue
+            if texto and (texto.endswith("*") or "(*)" in texto):
+                return True, f"Se detectó una pregunta/campo marcado con asterisco: '{texto[:60]}'."
+    except Exception:
+        pass
+
+    return False, ""
+
+
+def _verificar_exito_postulacion(page):
+    """Busca textos explicitos de exito tras un click de envio. Devuelve
+    True SOLO si encuentra alguno de _TEXTOS_EXITO_POSTULACION; si no
+    puede confirmarlo, devuelve False (nunca asume exito por default)."""
+    try:
+        cuerpo = (page.inner_text("body") or "").lower()
+    except Exception:
+        return False
+    return any(kw in cuerpo for kw in _TEXTOS_EXITO_POSTULACION)
+
+
+def enviar_postulacion_confirmada(page, fila):
+    """UNICO lugar del codigo que hace click en un boton real de
+    postulacion. Solo se llama desde _postular_oferta_logica() cuando ya
+    se cumplieron TODAS las condiciones: MODO_EJECUCION='MANUAL',
+    MODO_POSTULACION='CONFIRMADA', DRY_RUN_POSTULACION=False, la oferta
+    paso los chequeos de seguridad (dominio propio, sin CAPTCHA, sin
+    redirect externo), y el usuario ya confirmo una vez por consola.
+
+    Aun asi, pide UNA confirmacion mas ("Última confirmación") justo
+    antes de CUALQUIER click que pueda ser el envio definitivo -- tanto
+    si es el primer boton (flujos de un solo paso, ej. "postulacion
+    rapida") como si aparece un segundo boton de envio final (flujos de
+    dos pasos). Nunca completa preguntas, nunca adjunta archivos, nunca
+    saltea CAPTCHA: si detectar_preguntas_o_bloqueos() encuentra algo de
+    eso en cualquier momento, se detiene y marca 'requiere revisión
+    manual' sin clickear nada mas.
+
+    Devuelve (estado_postulacion, resultado_postulacion,
+    detalle_postulacion)."""
+    titulo = fila.get("titulo", "")
+    fuente = fila.get("fuente", "")
+
+    boton, motivo = detectar_boton_postulacion(page, fuente)
+    if boton is None:
+        return ("requiere revisión manual", "",
+                f"No se pudo identificar un botón único de postulación: {motivo}")
+
+    hay_bloqueo, motivo_bloqueo = detectar_preguntas_o_bloqueos(page)
+    if hay_bloqueo:
+        return "requiere revisión manual", "", motivo_bloqueo
+
+    print(f"\n  Se encontró el botón de postulación para: {titulo}")
+    respuesta = input("Última confirmación: ¿enviar definitivamente esta postulación? [s/N] ")
+    if respuesta not in ("s", "S"):
+        return "omitido", "omitido por usuario", "El usuario no confirmó el envío final"
+
+    try:
+        boton.click()
+        page.wait_for_timeout(2000)
+        try:
+            page.wait_for_load_state("networkidle", timeout=8000)
+        except Exception:
+            pass
+    except Exception as e:
+        return "error", "", f"Falló el click en el botón de postulación: {e}"
+
+    hay_bloqueo2, motivo_bloqueo2 = detectar_preguntas_o_bloqueos(page)
+    if hay_bloqueo2:
+        return ("requiere revisión manual", "",
+                f"Después del click apareció algo que no se puede completar solo: {motivo_bloqueo2}")
+
+    # Flujo de dos pasos: si aparece un segundo boton de envio, pedir
+    # confirmacion de nuevo antes de ese click (nunca se asume que el
+    # primer click ya fue el envio definitivo).
+    boton_final, _motivo_final = detectar_boton_postulacion(page, fuente)
+    if boton_final is not None:
+        print(f"\n  Apareció un segundo paso de postulación para: {titulo}")
+        respuesta2 = input("Última confirmación: ¿enviar definitivamente esta postulación? [s/N] ")
+        if respuesta2 not in ("s", "S"):
+            return "omitido", "omitido por usuario", "El usuario no confirmó el envío final (segundo paso)"
+        try:
+            boton_final.click()
+            page.wait_for_timeout(2000)
+            try:
+                page.wait_for_load_state("networkidle", timeout=8000)
+            except Exception:
+                pass
+        except Exception as e:
+            return "error", "", f"Falló el click en el botón final de postulación: {e}"
+
+    if _verificar_exito_postulacion(page):
+        return "postulado", "éxito verificado", "Se encontró un mensaje de éxito tras el envío."
+
+    return ("requiere revisión manual", "estado incierto",
+            "Se hizo click pero no se pudo verificar mensaje de éxito.")
+
+
+def _pedir_confirmacion_postulacion(fila):
+    """Muestra el detalle del aviso por consola y pregunta si se confirma
+    el envio. Solo devuelve True si la respuesta es exactamente 's' o 'S'
+    (cualquier otra cosa, incluido enter en blanco, cuenta como no)."""
+    print("\n" + "-" * 60)
+    print(f"Título: {fila.get('titulo', '')}")
+    print(f"Empresa: {fila.get('empresa', '')}")
+    print(f"Fuente: {fila.get('fuente', '')}")
+    print(f"Link: {fila.get('link', '')}")
+    print(f"Categoría: {fila.get('categoria_detectada', '')}")
+    print(f"Motivo decisión: {fila.get('motivo_decision', '')}")
+    print(f"Alertas: {fila.get('alertas_aviso', '') or '(ninguna)'}")
+    print(f"Mensaje sugerido: {fila.get('mensaje_postulacion', '')}")
+    print("-" * 60)
+    respuesta = input("¿Confirmás enviar esta postulación? [s/N] ")
+    return respuesta in ("s", "S")
+
+
+def _confirmada_permitida():
+    """MODO_POSTULACION='CONFIRMADA' pregunta por consola (input()), asi
+    que solo puede correr si hay alguien presente para contestar: en
+    MANUAL siempre, en TEST solo si PROBAR_POSTULACION_EN_TEST=True (asi
+    se puede probar el flujo sin ofertas nuevas reales). Nunca en AUTO ni
+    en DEMO, sin excepcion."""
+    if MODO_EJECUCION == "MANUAL":
+        return True
+    if MODO_EJECUCION == "TEST" and PROBAR_POSTULACION_EN_TEST:
+        return True
+    return False
+
+
+def _postular_oferta_logica(fila):
+    """Evalua UNA oferta ya filtrada como candidata (accion_sugerida =
+    'POSTULAR HOY') y decide que hacer. Nunca inventa datos, nunca
+    completa preguntas desconocidas, nunca saltea CAPTCHA, nunca postula
+    en portales externos. Devuelve (estado_postulacion,
+    resultado_postulacion, detalle_postulacion).
+
+    Estados posibles: "postulado", "simulado", "requiere revisión manual",
+    "omitido", "error".
+
+    Nota importante sobre el envio REAL (click en el boton final de
+    "Postularme"/"Enviar postulación"): en esta primera implementacion NO
+    esta conectado en NINGUN modo, ni siquiera en CONFIRMADA despues de
+    que el usuario dice que si. Postular es una accion irreversible hacia
+    un tercero (el empleador), y el boton final varia de HTML en HTML
+    (puede ser un <button type="submit">, un boton con texto "Enviar
+    postulación"/"Postularme", o aparecer recien despues de un paso
+    intermedio con preguntas) -- no hay un selector unico y confiable
+    todavia para detectarlo en Bumeran y Computrabajo a la vez. Hasta que
+    eso se identifique con seguridad, todas las ramas devuelven 'requiere
+    revisión manual' en el paso final en vez de arriesgar un click mal
+    dirigido. El modo 'ASISTIDA' (o 'CONFIRMADA' diciendo que si) deja el
+    aviso verificado como seguro y listo para que el humano termine el
+    envio a mano."""
+    if MODO_POSTULACION == "OFF":
+        return "omitido", "", "MODO_POSTULACION = OFF, no se procesó."
+
+    if MODO_POSTULACION == "CONFIRMADA" and not _confirmada_permitida():
+        # Nunca preguntar por consola (input()) sin alguien presente: en
+        # AUTO/DEMO (y en TEST sin PROBAR_POSTULACION_EN_TEST) no hay
+        # quien conteste y el script quedaria colgado esperando.
+        return ("requiere revisión manual", "",
+                "MODO_POSTULACION='CONFIRMADA' solo funciona con MODO_EJECUCION="
+                "'MANUAL' (o 'TEST' con PROBAR_POSTULACION_EN_TEST=True). No se "
+                f"pregunta ni se envía nada desde MODO_EJECUCION='{MODO_EJECUCION}'.")
+
+    es_segura, motivo = _postulacion_es_segura(fila)
+    if not es_segura:
+        return "requiere revisión manual", "", f"No cumple condiciones de seguridad: {motivo}."
+
+    link = fila.get("link", "")
+    titulo = fila.get("titulo", "")
+
+    try:
+        page = _get_page()
+        page.goto(link, timeout=20000, wait_until="domcontentloaded")
+        try:
+            page.wait_for_selector("h1", timeout=8000)
+        except Exception:
+            pass
+        cuerpo = (page.inner_text("body") or "")
+        cuerpo_low = cuerpo.lower()
+    except Exception as e:
+        return "error", "", f"No se pudo cargar el aviso: {e}"
+
+    bloqueo = [kw for kw in _POSTULACION_BLOQUEO_KW if kw in cuerpo_low]
+    if bloqueo:
+        return "requiere revisión manual", "", f"CAPTCHA/Cloudflare detectado ({', '.join(bloqueo)})."
+
+    externo = [kw for kw in BUMERAN_EXTERNOS_BLOQUEADOS if kw in cuerpo_low]
+    if externo:
+        return "requiere revisión manual", "", f"La postulación redirige a un portal externo ({', '.join(externo)})."
+
+    # A partir de aca habria que reconocer el boton de postulacion y (en
+    # ASISTIDA) llegar hasta el formulario, o (AUTO_SEGURO) revisar que no
+    # pida preguntas obligatorias/adjuntos desconocidos antes de decidir.
+    # Como esa parte varia mucho aviso a aviso y HTML a HTML, y como
+    # completar un formulario ajeno con datos reales es justo el tipo de
+    # accion que no se debe automatizar a ciegas, el agente se detiene
+    # aca: llegó hasta el aviso, verificó que es seguro (propio, sin
+    # bloqueo, sin redirect externo), y deja el resto para el humano.
+    if MODO_POSTULACION == "ASISTIDA":
+        return ("simulado", "",
+                f"Oferta abierta y verificada como segura ({titulo}). "
+                "El agente no completó ni envió el formulario: revisar y postular manualmente.")
+
+    if MODO_POSTULACION == "CONFIRMADA":
+        # Preguntas obligatorias desconocidas, adjuntos faltantes o datos
+        # ambiguos: detectar_preguntas_o_bloqueos() (adentro de
+        # enviar_postulacion_confirmada) trata cualquiera de esos casos
+        # como "requiere revision". No se inventa nada.
+        confirmado = _pedir_confirmacion_postulacion(fila)
+        if not confirmado:
+            return "omitido", "rechazado por usuario", "El usuario no confirmó el envío"
+
+        if DRY_RUN_POSTULACION:
+            return ("simulado", "",
+                    "DRY RUN: confirmaste el envío, pero DRY_RUN_POSTULACION=True así "
+                    "que no se hizo ningún click real.")
+
+        if MODO_EJECUCION != "MANUAL":
+            # Salvaguarda extra (ademas de _confirmada_permitida()): el
+            # envio REAL con click de verdad solo puede pasar en una
+            # corrida manual, nunca en TEST -- ni siquiera con
+            # PROBAR_POSTULACION_EN_TEST=True, que solo habilita PROBAR
+            # el flujo (con DRY_RUN=True), no enviar de verdad.
+            return ("requiere revisión manual", "",
+                    "DRY_RUN_POSTULACION=False solo puede enviar de verdad con "
+                    f"MODO_EJECUCION='MANUAL'. Con MODO_EJECUCION='{MODO_EJECUCION}' "
+                    "no se hace ningún click real aunque hayas confirmado.")
+
+        # Unico camino de todo el archivo que puede terminar en un click
+        # real: MANUAL + CONFIRMADA + DRY_RUN_POSTULACION=False + el
+        # usuario ya confirmo una vez arriba. enviar_postulacion_confirmada
+        # pide una confirmacion mas antes de cualquier click.
+        return enviar_postulacion_confirmada(page, fila)
+
+    # MODO_POSTULACION == "AUTO_SEGURO"
+    if DRY_RUN_POSTULACION:
+        return ("simulado", "",
+                f"DRY RUN: la oferta pasó todos los chequeos de seguridad y se habría "
+                "postulado. No se tocó ningún botón real.")
+
+    return ("requiere revisión manual", "",
+            "Envío automático real no está implementado (a propósito): postular es "
+            "una acción irreversible hacia un tercero y requiere confirmación humana "
+            "en el momento. Usar MODO_POSTULACION='ASISTIDA' para hacerlo con ayuda "
+            "del agente, o postular manualmente.")
+
+
+def postular_oferta(fila, es_test=False):
+    """Punto de entrada publico: corre _postular_oferta_logica() y, si
+    es_test=True (viene de MODO_EJECUCION='TEST' con
+    PROBAR_POSTULACION_EN_TEST=True), marca claramente el resultado como
+    una prueba -- nunca se confunde con una postulacion real en el log ni
+    en la hoja ACCIONES. No cambia ninguna otra logica: los mismos
+    chequeos de seguridad, el mismo tope, la misma confirmacion si
+    corresponde."""
+    estado, resultado_txt, detalle = _postular_oferta_logica(fila)
+    if es_test:
+        etiqueta = "[PRUEBA MODO TEST]"
+        resultado_txt = f"{etiqueta} {resultado_txt}".strip() if resultado_txt else etiqueta
+    return estado, resultado_txt, detalle
+
+
+def ejecutar_postulaciones(df_acciones, es_test=False):
+    """Recorre la hoja ACCIONES, filtra 'POSTULAR HOY', respeta
+    MAX_POSTULACIONES_POR_CORRIDA, y llama a postular_oferta() por cada
+    una. Registra cada intento en postulaciones_log.xlsx. Devuelve una
+    COPIA de df_acciones con 3 columnas nuevas (estado_postulacion,
+    resultado_postulacion, detalle_postulacion). Si MODO_POSTULACION es
+    'OFF', no toca el navegador ni procesa nada: vuelve con esas 3
+    columnas vacías.
+
+    es_test=True (llamado desde MODO_EJECUCION='TEST' con
+    PROBAR_POSTULACION_EN_TEST=True) NO cambia ningun chequeo de
+    seguridad: solo hace que cada resultado quede marcado como prueba
+    (via postular_oferta(..., es_test=True)) y no toca vistos.json ni
+    historial_trabajos.xlsx -- eso ya esta separado de esta funcion, en
+    main(), y sigue igual sin importar este flag."""
+    resultado = df_acciones.copy()
+    resultado["estado_postulacion"] = ""
+    resultado["resultado_postulacion"] = ""
+    resultado["detalle_postulacion"] = ""
+
+    if resultado.empty or MODO_POSTULACION == "OFF":
+        return resultado
+
+    if MODO_POSTULACION == "CONFIRMADA" and not _confirmada_permitida():
+        # Defensa en profundidad: ni siquiera abrir el navegador. La misma
+        # regla se re-chequea adentro de postular_oferta() por si esta
+        # funcion se llama de otro lado en el futuro.
+        print(f"\n  MODO_POSTULACION='CONFIRMADA' requiere MODO_EJECUCION='MANUAL' "
+              f"(o 'TEST' con PROBAR_POSTULACION_EN_TEST=True). Como MODO_EJECUCION="
+              f"'{MODO_EJECUCION}', no se pregunta ni se envía nada esta corrida.")
+        return resultado
+
+    candidatas_idx = resultado.index[resultado["accion_sugerida"] == "POSTULAR HOY"]
+    candidatas_idx = candidatas_idx[:MAX_POSTULACIONES_POR_CORRIDA]
+
+    if len(candidatas_idx) == 0:
+        return resultado
+
+    print(f"\n--- POSTULACIÓN ({MODO_POSTULACION}"
+          f"{', DRY RUN' if DRY_RUN_POSTULACION else ''}"
+          f"{', MODO TEST' if es_test else ''}) ---")
+    print(f"  Procesando {len(candidatas_idx)} oferta(s) POSTULAR HOY "
+          f"(tope: {MAX_POSTULACIONES_POR_CORRIDA})")
+    if es_test:
+        print("  MODO TEST: no se toca vistos.json ni historial_trabajos.xlsx, "
+              "y no se asume éxito en ningún caso.")
+
+    for idx in candidatas_idx:
+        fila = resultado.loc[idx]
+        titulo = fila.get("titulo", "")
+        print(f"  [Postulación] procesando: {titulo}")
+
+        estado, resultado_txt, detalle = postular_oferta(fila, es_test=es_test)
+        print(f"  [Postulación] {estado}: {detalle}")
+
+        resultado.at[idx, "estado_postulacion"] = estado
+        resultado.at[idx, "resultado_postulacion"] = resultado_txt
+        resultado.at[idx, "detalle_postulacion"] = detalle
+
+        _registrar_postulacion_log({
+            "fecha_hora": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "titulo": titulo,
+            "empresa": fila.get("empresa", ""),
+            "fuente": fila.get("fuente", ""),
+            "link": fila.get("link", ""),
+            "accion_sugerida": fila.get("accion_sugerida", ""),
+            "estado_postulacion": estado,
+            "resultado_postulacion": resultado_txt,
+            "detalle_postulacion": detalle,
+        })
+
+    return resultado
+
+
 # --- FORMATO DEL EXCEL ----------------------------------------------------
 # Colores suaves (no agresivos), estilo "semaforo" clasico de Excel.
 _COLORES_DECISION = {
@@ -1485,14 +2145,17 @@ _COLORES_DECISION = {
 
 
 def aplicar_formato_excel(writer, df, resumen):
-    """Formato visual de las hojas de datos (TODOS + una por fuente): fila
-    1 congelada, autofiltro, ancho de columna aproximado, link como
-    hipervinculo, y relleno suave de fila segun decision_sugerida. No
-    toca la hoja RESUMEN (esa tiene su propio layout, armado aparte)."""
+    """Formato visual de las hojas de datos (TODOS, una por fuente, y
+    ACCIONES): fila 1 congelada, autofiltro, ancho de columna aproximado,
+    link como hipervinculo, y relleno suave de fila segun
+    decision_sugerida. No toca la hoja RESUMEN (esa tiene su propio
+    layout, armado aparte).
+
+    Los indices de 'link'/'decision_sugerida' se calculan POR HOJA (leyendo
+    su propia fila de encabezados), no del 'df' recibido: ACCIONES tiene un
+    orden de columnas distinto al de TODOS/por-fuente, y esto evita que se
+    le aplique el hipervinculo o el color a la columna equivocada."""
     wb = writer.book
-    columnas = list(df.columns)
-    col_link_idx = columnas.index("link") + 1 if "link" in columnas else None
-    col_decision_idx = columnas.index("decision_sugerida") + 1 if "decision_sugerida" in columnas else None
 
     for nombre_hoja in wb.sheetnames:
         if nombre_hoja == "RESUMEN":
@@ -1500,6 +2163,11 @@ def aplicar_formato_excel(writer, df, resumen):
         ws = wb[nombre_hoja]
         if ws.max_row < 2:
             continue
+
+        encabezados = [c.value for c in ws[1]]
+        col_link_idx = encabezados.index("link") + 1 if "link" in encabezados else None
+        col_decision_idx = (encabezados.index("decision_sugerida") + 1
+                             if "decision_sugerida" in encabezados else None)
 
         ws.freeze_panes = "A2"
         ws.auto_filter.ref = ws.dimensions
@@ -1602,6 +2270,16 @@ def crear_hoja_resumen(writer, datos_resumen):
         if relleno:
             for col in range(1, 7):
                 ws.cell(row=fila, column=col).fill = relleno
+        fila += 1
+
+    fila += 1
+    ws.cell(row=fila, column=1, value="Acciones sugeridas").font = seccion_font
+    fila += 1
+    conteo_acciones = datos_resumen.get("conteo_acciones") or {}
+    for etiqueta in ("POSTULAR HOY", "REVISAR ANTES DE POSTULAR",
+                      "REVISAR MANUALMENTE", "NO ACCIONAR"):
+        ws.cell(row=fila, column=1, value=etiqueta).font = etiqueta_font
+        ws.cell(row=fila, column=2, value=conteo_acciones.get(etiqueta, 0))
         fila += 1
 
     ws.column_dimensions["A"].width = 26
@@ -1782,6 +2460,15 @@ def _ejecutar_modo_demo(inicio_ejecucion):
         })
     top5_texto = "\n".join(top5_lineas) if top5_lineas else "(sin ofertas)"
 
+    # --- bandeja de acciones: solo sugiere, no postula ni envia nada -----
+    # (los links de DEMO son ficticios: no se procesa postulacion sobre
+    # datos simulados, solo se dejan las columnas vacias para mantener
+    # el mismo esquema que un Excel real)
+    acciones_df, conteo_acciones = construir_acciones(nuevas)
+    acciones_df["estado_postulacion"] = ""
+    acciones_df["resultado_postulacion"] = ""
+    acciones_df["detalle_postulacion"] = ""
+
     archivo = construir_ruta_excel(es_test=False, es_demo=True)
 
     datos_resumen = {
@@ -1797,12 +2484,14 @@ def _ejecutar_modo_demo(inicio_ejecucion):
         "es_test": False,
         "es_demo": True,
         "top5": top5_items,
+        "conteo_acciones": conteo_acciones,
     }
 
     with pd.ExcelWriter(archivo, engine="openpyxl") as writer:
         crear_hoja_resumen(writer, datos_resumen)
         nuevas.to_excel(writer, sheet_name="TODOS", index=False)
         nuevas.to_excel(writer, sheet_name="Demo", index=False)
+        acciones_df.to_excel(writer, sheet_name="ACCIONES", index=False)
         aplicar_formato_excel(writer, nuevas, datos_resumen)
 
         wb = writer.book
@@ -1833,6 +2522,13 @@ def _ejecutar_modo_demo(inicio_ejecucion):
             f"\n\nSe generaron fichas de postulación para {cant_postular} "
             f"ofertas marcadas como POSTULAR."
         )
+    mensaje_final += (
+        f"\n\nAcciones sugeridas:\n"
+        f"POSTULAR HOY: {conteo_acciones.get('POSTULAR HOY', 0)}\n"
+        f"REVISAR ANTES DE POSTULAR: {conteo_acciones.get('REVISAR ANTES DE POSTULAR', 0)}\n"
+        f"REVISAR MANUALMENTE: {conteo_acciones.get('REVISAR MANUALMENTE', 0)}\n"
+        f"NO ACCIONAR: {conteo_acciones.get('NO ACCIONAR', 0)}"
+    )
     mensaje_final += f"\n\nDuración total: {_formatear_duracion(inicio_ejecucion)}."
 
     abrir_excel_si_corresponde(archivo)
@@ -1857,6 +2553,10 @@ def main():
     print(f"Sonido final: {SONIDO_FINAL}")
     print(f"Perfil usuario cargado: {'sí' if PERFIL_USUARIO_TEXTO else 'no'}")
     print(f"Analizar descripción detalle: {ANALIZAR_DESCRIPCION_DETALLE}")
+    print(f"Modo postulación: {MODO_POSTULACION}")
+    print(f"Dry run postulación: {DRY_RUN_POSTULACION}")
+    print(f"Máximo postulaciones por corrida: {MAX_POSTULACIONES_POR_CORRIDA}")
+    print(f"Probar postulación en TEST: {PROBAR_POSTULACION_EN_TEST}")
     print("-------------------\n")
 
     if MODO_EJECUCION == "DEMO":
@@ -2078,6 +2778,26 @@ def main():
     # se quedan en la carpeta principal (construir_ruta_excel no los toca).
     archivo = construir_ruta_excel(es_test=es_test)
 
+    # --- bandeja de acciones: solo sugiere, no postula ni envia nada -----
+    acciones_df, conteo_acciones = construir_acciones(nuevas)
+
+    # --- postulacion asistida/automatica (respeta MODO_POSTULACION) ------
+    # En modo test los links "nuevos" son en realidad avisos repetidos que
+    # ya se vieron antes, asi que por default no se procesan para postular.
+    # PROBAR_POSTULACION_EN_TEST=True permite probar el flujo completo
+    # (apertura/chequeos/confirmacion) igual, sin esperar ofertas nuevas
+    # reales -- sigue sin tocar vistos.json/historial_trabajos.xlsx (eso
+    # ya esta fuera de este bloque) y cada resultado queda marcado como
+    # prueba de TEST.
+    if not es_test:
+        acciones_df = ejecutar_postulaciones(acciones_df)
+    elif PROBAR_POSTULACION_EN_TEST:
+        acciones_df = ejecutar_postulaciones(acciones_df, es_test=True)
+    else:
+        acciones_df["estado_postulacion"] = ""
+        acciones_df["resultado_postulacion"] = ""
+        acciones_df["detalle_postulacion"] = ""
+
     datos_resumen = {
         "fecha_hora": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "modo_ejecucion": MODO_EJECUCION,
@@ -2090,6 +2810,7 @@ def main():
         "descartar": conteo_decision.get("DESCARTAR", 0),
         "es_test": es_test,
         "top5": top5_items,
+        "conteo_acciones": conteo_acciones,
     }
 
     with pd.ExcelWriter(archivo, engine="openpyxl") as writer:
@@ -2098,6 +2819,7 @@ def main():
         nuevas.to_excel(writer, sheet_name="TODOS", index=False)
         for fuente in nuevas["fuente"].unique():
             nuevas[nuevas["fuente"] == fuente].to_excel(writer, sheet_name=str(fuente)[:31], index=False)
+        acciones_df.to_excel(writer, sheet_name="ACCIONES", index=False)
 
         aplicar_formato_excel(writer, nuevas, datos_resumen)
 
@@ -2161,6 +2883,13 @@ def main():
             f"\n\nSe generaron fichas de postulación para {cant_postular} "
             f"ofertas marcadas como POSTULAR."
         )
+    mensaje_final += (
+        f"\n\nAcciones sugeridas:\n"
+        f"POSTULAR HOY: {conteo_acciones.get('POSTULAR HOY', 0)}\n"
+        f"REVISAR ANTES DE POSTULAR: {conteo_acciones.get('REVISAR ANTES DE POSTULAR', 0)}\n"
+        f"REVISAR MANUALMENTE: {conteo_acciones.get('REVISAR MANUALMENTE', 0)}\n"
+        f"NO ACCIONAR: {conteo_acciones.get('NO ACCIONAR', 0)}"
+    )
     mensaje_final += f"\n\nDuración total: {_formatear_duracion(inicio_ejecucion)}."
     abrir_excel_si_corresponde(archivo)
     avisar_fin(mensaje_final)

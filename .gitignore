@@ -4,7 +4,10 @@ buscador.lock
 log_buscador.txt
 vistos.json
 historial_trabajos.xlsx
+postulaciones_log.xlsx
+perfil_sergio.txt
 resultados/
 debug_indeed_cloudflare.png
 debug_indeed_cloudflare.html
+buscador_trabajos_v2_BACKUP_antes_sync.py
 .env
