@@ -20,6 +20,23 @@ import re
 import time
 from pathlib import Path
 import requests
+
+# SSL: en esta maquina, Norton Antivirus intercepta HTTPS ("SSL/TLS
+# scanning") y re-firma los certificados con su propia CA root. Windows
+# confia en esa root (por eso Playwright/Bumeran no tiene problema), pero
+# el bundle propio de certifi que usa `requests` no la incluye -> Computrabajo
+# fallaba con CERTIFICATE_VERIFY_FAILED. `truststore` hace que el ssl
+# de Python use el almacen de certificados del sistema operativo (el mismo
+# que ya usa el navegador), en vez del bundle de certifi. Sigue verificando
+# de verdad: no es un verify=False. Si el paquete no esta instalado, sigue
+# con certifi/default (mismo comportamiento de antes, no rompe el script).
+try:
+    import truststore
+    truststore.inject_into_ssl()
+    print("SSL: usando truststore del sistema operativo")
+except ImportError:
+    print("SSL: truststore no disponible; requests usará certifi")
+
 import pandas as pd
 from openpyxl.styles import Font, PatternFill
 from bs4 import BeautifulSoup

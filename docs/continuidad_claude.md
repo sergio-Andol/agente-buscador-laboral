@@ -106,6 +106,38 @@ decida disparar la prueba de verdad.
 
 ## 6. Cambios recientes (más nuevo primero)
 
+- **Fix SSL: Computrabajo devolvía 0 resultados por `CERTIFICATE_VERIFY_FAILED`.**
+  Agregado `truststore` (nuevo en `requirements.txt`), inyectado con
+  `truststore.inject_into_ssl()` justo después de `import requests`, envuelto en
+  `try/except ImportError` (si no está instalado, sigue con certifi/default sin
+  romper el script, solo avisa por consola).
+  - *Por qué*: en esta máquina, **Norton Antivirus intercepta HTTPS** ("SSL/TLS
+    scanning") y re-firma los certificados con su propia CA
+    (`Norton Web/Mail Shield Root`). Windows confía en esa root (por eso
+    Playwright/Bumeran nunca tuvo problema), pero el bundle propio de certifi que
+    usa `requests` (solo lo usa `computrabajo()`) no la incluye → cada request
+    fallaba con `SSLError: CERTIFICATE_VERIFY_FAILED`.
+  - *Cómo se diagnosticó*: se probó request mínimo con `verify` default y con
+    `verify=certifi.where()` explícito → mismo error en ambos (descartaba certifi
+    desactualizado, certifi ya estaba en última versión). Se inspeccionó la cadena
+    de certificado real del server con `openssl s_client -connect
+    ar.computrabajo.com:443` → confirmó el certificado re-firmado por Norton.
+  - *Por qué esta solución y no otra*: se descartó `verify=False` (desactiva
+    verificación real). `truststore` hace que el `ssl` de Python use el almacén de
+    certificados del sistema operativo — el mismo que ya usa el navegador/Playwright
+    — en vez del bundle aislado de certifi. Sigue verificando de verdad, solo iguala
+    el trust anchor.
+  - *Qué se probó*: `pip install -r requirements.txt` (truststore 0.10.4 instalado
+    sin conflictos); request mínimo a Computrabajo con truststore inyectado → ya sin
+    SSLError; `computrabajo("analista")` corrida real → devolvió 1 oferta real (antes
+    0); `py -3.14 -m py_compile buscador_trabajos_v2.py` → compila sin errores.
+  - *No se tocó*: Bumeran/Playwright (no pasan por `requests`, no les afecta),
+    postulación real, `DRY_RUN_POSTULACION`. No se agregó `CT_VERIFY_SSL=False` ni
+    ningún switch para desactivar verificación.
+  - *Pendiente*: confirmar en la próxima corrida `MANUAL` completa que Computrabajo
+    vuelve a aportar candidatos reales al Excel (esta prueba fue solo con
+    `computrabajo()` aislado, no corrida completa del script).
+
 - **Fix: la bandeja de ACCIONES enterraba REVISAR en NO ACCIONAR por culpa de la
   palabra "senior".** `determinar_accion_sugerida()` usaba `_ALERTAS_GRAVES`
   (compartida con `_postulacion_es_segura`, que SÍ incluye `"senior"`/`"5 años"` etc.
