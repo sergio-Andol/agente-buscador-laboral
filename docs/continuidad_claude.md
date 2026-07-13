@@ -1,6 +1,6 @@
 # Continuidad del proyecto — Agente Buscador Laboral
 
-> Handoff para una nueva sesión de Claude Code. Última actualización: 2026-07-12.
+> Handoff para una nueva sesión de Claude Code. Última actualización: 2026-07-13.
 > Regla de mantenimiento: actualizar esta sección al tope con cada cambio funcional
 > importante (qué se cambió / por qué / qué se probó / qué quedó pendiente /
 > advertencias de seguridad). No hace falta por cambios de estilo o comentarios.
@@ -105,6 +105,68 @@ decida disparar la prueba de verdad.
 - **Postulación asistida/automática segura** — ver sección 7.
 
 ## 6. Cambios recientes (más nuevo primero)
+
+- **Mejora de calidad de búsqueda: más foco IT/Data/Soporte/Junior, menos ruido
+  industrial.** Motivo: la corrida MANUAL del 13/07 (ver entrada de validación abajo)
+  trajo 134 avisos crudos (Bumeran 48 + Computrabajo 86) pero solo 2 nuevas, ambas
+  DESCARTAR — 0 POSTULAR, 0 REVISAR. Diagnóstico: `BUSQUEDAS`/`PERFIL_KEYWORDS`/
+  `TITULO_DEBE_CONTENER` tenían mucho peso industrial (mecánico, operario,
+  mantenimiento, producción) que diluía el volumen real de perfil, y un bug real:
+  `TITULO_DEBE_CONTENER` no tenía ninguna palabra de la familia AI/prompt/trainee
+  (`ai`, `trainer`, `prompt`, `annotation`, `junior`, `trainee`, etc.) — un aviso
+  titulado literalmente "AI Trainer" se perdía en ese filtro antes de llegar a
+  relevancia, aunque estuviera en `BUSQUEDAS`.
+  - **`BUSQUEDAS`**: agregados 11 términos de prioridad (SQL junior, Power BI junior,
+    soporte IT junior, help desk, QA tester junior, trainee IT, analista funcional
+    junior, administrativo sistemas, back office sistemas, automation trainee,
+    prompt evaluator). Recortado el bloque industrial explícito (tecnico mecanico,
+    operario de producción, mantenimiento industrial, supervisor de producción, jefe
+    de almacén, y sueltas operario/mantenimiento/supervisor/tecnico/produccion/
+    almacen/mechanic/maintenance/production operator).
+  - **`PERFIL_KEYWORDS`**: quitadas mecanico/produccion/operario/mantenimiento/
+    industrial/maquinas (fuera de perfil). Agregadas ai/annotator/evaluator/
+    helpdesk/back office/automation.
+  - **`TITULO_DEBE_CONTENER`** (fix del bug de arriba): agregadas ai/ia/trainer/
+    prompt/annotation/annotator/evaluator/junior/trainee/helpdesk. Quitadas
+    mecanico/mantenimiento/produccion/operario/electromecanico.
+  - **`TITULO_NO_DEBE_CONTENER`**: agregadas ventas, "capacitación y desarrollo",
+    mantenimiento/operario/producción/mecánico/electromecánico/"técnico industrial".
+    A propósito NO se agregó "senior" acá (sigue viva en `DECISION_DESCARTAR_KEYWORDS`,
+    para que quede visible como DESCARTAR en el Excel en vez de desaparecer antes de
+    tiempo — mismo criterio de diseño del proyecto: nunca eliminar, solo marcar).
+  - **`DECISION_POSTULAR_KEYWORDS`**: agregadas help desk/ai/annotation/annotator/
+    trainer/prompt/back office/automation — antes esas categorías no sumaban ningún
+    match para POSTULAR/REVISAR aunque sobrevivieran los filtros de arriba.
+  - **`DECISION_POSTULAR_MIN_MATCHES`**: bajado de `3` a `2` (título corto rara vez
+    junta 3 keywords; REVISAR sigue en 1+ match, sin cambios ahí).
+  - *Qué se probó*: `py -3.14 -m py_compile buscador_trabajos_v2.py` → compila sin
+    errores. Todavía NO se corrió una MANUAL completa con las listas nuevas (queda
+    pendiente, ver sección 10).
+  - *No se tocó*: postulación real, `DRY_RUN_POSTULACION`, `truststore`, historial
+    (`vistos.json`/`historial_trabajos.xlsx`), lock, Programador de tareas de
+    Windows.
+
+- **Validación del fix SSL en corrida MANUAL completa real (2026-07-13 10:27:30).**
+  Corrida `MODO_EJECUCION="MANUAL"` de punta a punta contra Bumeran y Computrabajo
+  reales, con `DRY_RUN_POSTULACION=True` sin tocar y respuesta automática "n" a
+  cualquier posible prompt de confirmación (no hizo falta: 0 candidatas).
+  - *Resultado*: **Computrabajo funcionó en el flujo completo** — 86 resultados
+    crudos (antes del fix: 0, siempre `CERTIFICATE_VERIFY_FAILED`). Bumeran: 48
+    resultados crudos. Sin ningún SSLError durante toda la corrida.
+  - *Clasificación*: POSTULAR: 0 | REVISAR: 0 | DESCARTAR: 2. Acciones sugeridas:
+    POSTULAR HOY: 0 (el resto en 0 también). Como no hubo POSTULAR HOY, no se activó
+    el flujo de postulación (`ejecutar_postulaciones` no tuvo nada que procesar, no
+    se llamó `input()`), y no se generó `postulaciones_log.xlsx`.
+  - *Excel generado*: `resultados\2026-07\trabajos_2026-07-13_10-27-30.xlsx` (2
+    ofertas nuevas: "Analista de Capacitación y Desarrollo" y "Administrativo
+    contable Senior", ambas DESCARTAR). Duración total: 34m 54s.
+  - *Seguridad*: no se envió nada real, `DRY_RUN_POSTULACION` siguió en `True` sin
+    tocarse, no se hizo commit en esta corrida.
+  - *Intento previo (mismo día, descartado)*: una corrida anterior se cortó por una
+    caída real de conectividad a mitad de ejecución (`ERR_INTERNET_DISCONNECTED` /
+    `NameResolutionError` en ambas fuentes) — no relacionado al fix SSL, solo
+    confirma que sin red ninguna fuente funciona. Se repitió una vez restablecida la
+    conexión, con el resultado de arriba.
 
 - **Fix SSL: Computrabajo devolvía 0 resultados por `CERTIFICATE_VERIFY_FAILED`.**
   Agregado `truststore` (nuevo en `requirements.txt`), inyectado con

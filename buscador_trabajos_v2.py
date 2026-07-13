@@ -135,21 +135,24 @@ BUSQUEDAS = [
     # --- compuestas (precisas) ---
     "anotacion de datos", "data annotation", "data annotator", "AI trainer",
     "AI data trainer", "machine learning data", "evaluador de IA", "prompt engineer",
+    "prompt evaluator",
     "analista de datos", "data analyst", "junior data analyst", "analista bi",
-    "analista sql", "analista de datos junior", "data entry remote",
+    "analista sql", "analista de datos junior", "data analyst junior",
+    "SQL junior", "Power BI junior", "data entry remote",
     "desarrollador junior", "junior developer", "programador junior",
     "desarrollador web", "desarrollador python", "python developer",
-    "QA tester", "QA tester remote", "analista de testing", "soporte IT",
-    "soporte tecnico", "mesa de ayuda", "analista funcional",
+    "QA tester", "QA tester junior", "QA tester remote", "analista de testing",
+    "soporte IT", "soporte IT junior", "soporte tecnico", "mesa de ayuda",
+    "help desk", "analista funcional", "analista funcional junior",
+    "trainee IT", "automation trainee", "administrativo sistemas",
+    "back office sistemas",
     "analista supply chain", "planificador de produccion",
     "analista de abastecimiento", "analista de compras",
     "analista de inventarios", "administrativo logistica", "asistente de logistica",
-    "tecnico mecanico", "operario de produccion", "mantenimiento industrial",
-    "supervisor de produccion", "jefe de almacen",
     # --- palabras solas (mas volumen; el filtro fino contiene el ruido) ---
-    "operario", "mantenimiento", "supervisor", "tecnico", "analista",
+    "analista",
     "desarrollador", "programador", "soporte", "administrativo", "logistica",
-    "produccion", "almacen", "deposito", "abastecimiento", "compras",
+    "abastecimiento", "compras",
     "inventario", "datos", "testing", "qa", "sistemas",
     # --- planning / IT ---
     "planner", "planning", "planeamiento", "planificacion",
@@ -158,23 +161,23 @@ BUSQUEDAS = [
     "tester",
     "developer", "programmer", "software developer", "web developer",
     "backend developer", "frontend developer", "full stack",
-    "support", "IT support", "helpdesk", "help desk", "service desk",
+    "support", "IT support", "helpdesk", "service desk",
     "QA analyst", "quality assurance", "software tester",
     "data entry", "data engineer",
     "supply chain", "supply chain analyst", "warehouse", "logistics",
-    "maintenance", "production operator", "mechanic", "planner demand",
+    "planner demand",
 ]
 
 PERFIL_KEYWORDS = [
-    "ia", "llm", "anotacion", "annotation", "prompt", "datos", "data",
+    "ia", "ai", "llm", "anotacion", "annotation", "prompt", "datos", "data",
     "python", "sql", "power bi", "bi", "excel", "oracle", "analista",
     "machine learning", "junior", "trainee", "intern", "entry level",
     "desarrollador", "programador", "developer", "web", "html", "css",
     "javascript", "qa", "testing", "soporte", "erp", "remote", "remoto",
-    "annotator", "trainer", "supply", "logistica", "inventario",
+    "annotator", "evaluator", "trainer", "helpdesk", "help desk", "back office",
+    "automation", "supply", "logistica", "inventario",
     "abastecimiento", "compras", "planificacion", "almacen", "administrativo",
-    "mecanico", "produccion", "operario", "mantenimiento", "industrial",
-    "tecnico", "maquinas",
+    "tecnico",
 ]
 
 # --- FILTRO DE ZONA ---------------------------------------------------
@@ -277,8 +280,9 @@ PERFIL_USUARIO_TEXTO = ""
 # solo se uso para calcular 'relevancia').
 DECISION_POSTULAR_KEYWORDS = [
     "analista de datos", "data analyst", "sql", "power bi", "excel", "python",
-    "soporte it", "mesa de ayuda", "analista funcional", "qa", "testing",
+    "soporte it", "mesa de ayuda", "help desk", "analista funcional", "qa", "testing",
     "desarrollador junior", "programador junior", "trainee", "junior",
+    "ai", "annotation", "annotator", "trainer", "prompt", "back office", "automation",
     "remoto", "híbrido", "hibrido", "caba", "capital federal", "supply chain",
     "abastecimiento", "compras", "inventario", "planificación", "planificacion",
     "administrativo",
@@ -298,7 +302,7 @@ DECISION_DESCARTAR_KEYWORDS = [
 
 # Umbral: con esta cantidad o mas de keywords de POSTULAR matcheadas, se
 # marca POSTULAR. Menos que eso pero al menos 1 match -> REVISAR.
-DECISION_POSTULAR_MIN_MATCHES = 3
+DECISION_POSTULAR_MIN_MATCHES = 2
 
 # --- Filtros que Computrabajo aplica EN LA URL (mas confiable) ---
 # Ciudad: tal como aparece en la URL de Computrabajo. Ej: "capital-federal".
@@ -325,13 +329,14 @@ TITULO_DEBE_CONTENER = [
     "programador", "developer", "qa", "tester", "testing", "soporte",
     "it", "sistemas", "funcional", "tecnico", "técnico",
     "planner", "planning",
+    # AI / prompt / trainee (antes faltaban -> avisos tipo "AI Trainer" se
+    # perdian en este filtro aunque estuvieran en BUSQUEDAS y PERFIL_KEYWORDS)
+    "ai", "ia", "trainer", "prompt", "annotation", "annotator", "evaluator",
+    "junior", "trainee", "helpdesk",
     # supply chain / admin
     "supply", "abastecimiento", "compras", "inventario", "logistica",
     "logística", "planificador", "planeamiento", "administrativo",
-    # fabrica / mecanica
-    "mecanico", "mecánico", "mantenimiento", "produccion", "producción",
-    "operario", "almacen", "almacén", "deposito", "depósito",
-    "electromecanico", "electromecánico",
+    "almacen", "almacén", "deposito", "depósito",
 ]
 # Palabras cortas/ambiguas que deben matchear como PALABRA ENTERA, no como
 # fragmento (si no, "it" matchea "digital", "bi" matchea "habil", etc.)
@@ -346,11 +351,16 @@ TITULO_NO_DEBE_CONTENER = [
     "bachero", "pizzer", "sushi", "panader", "pasteler", "barista",
     "ayudante de cocina",
     # ventas / atencion / otros rubros lejanos a tu perfil
-    "vendedor", "vendedora", "cajero", "cajera", "promotor",
+    "vendedor", "vendedora", "cajero", "cajera", "promotor", "ventas",
     "telemarket", "call center", "atencion al cliente",
     # RRHH / reclutamiento
     "recursos humanos", "rrhh", "reclut", "selección de personal",
     "seleccion de personal", "capital humano", "talent", "generalista de rrhh",
+    "capacitación y desarrollo", "capacitacion y desarrollo",
+    # industria / fabrica / mecanica (fuera de perfil IT/Data/Soporte)
+    "mantenimiento", "operario", "producción", "produccion",
+    "mecánico", "mecanico", "electromecánico", "electromecanico",
+    "técnico industrial", "tecnico industrial",
 ]
 
 # --- INDEED ------------------------------------------------------------
