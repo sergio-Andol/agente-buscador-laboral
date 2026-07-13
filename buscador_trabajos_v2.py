@@ -37,7 +37,7 @@ from bs4 import BeautifulSoup
 #               internet y SIN tocar el historial. Sirve para mostrar el
 #               proyecto o probar el formato sin depender de Bumeran/
 #               Computrabajo/Indeed.
-MODO_EJECUCION = "TEST"  # "AUTO", "MANUAL", "TEST" o "DEMO"
+MODO_EJECUCION = "MANUAL"  # "AUTO", "MANUAL", "TEST" o "DEMO"
 
 # --- independientes de MODO_EJECUCION: se dejan como estaban ------------
 # True = activa Indeed.
@@ -1562,12 +1562,29 @@ _ALERTAS_GRAVES = [
     "5 años", "6 años", "7 años", "senior",
 ]
 
-# Alertas que no descartan la oferta, pero conviene revisar antes de
-# mandar el mensaje (no son motivo de NO ACCIONAR por si solas).
-_ALERTAS_MODERADAS = [
+# --- Alertas de la bandeja de ACCIONES (determinar_accion_sugerida) -----
+# Listas propias de ESTA capa, separadas a propósito de _ALERTAS_GRAVES de
+# arriba (esa la usa tambien _postulacion_es_segura, el gate del envio
+# real de postulacion.py -- no se toca).
+#
+# Graves de verdad (estafa / portal externo / redirect): siempre
+# NO ACCIONAR, sin importar decision_sugerida.
+_ALERTAS_GRAVES_ACCION = [
+    "pagar para postular", "curso pago", "capacitación paga", "capacitacion paga",
+    "inscripción con costo", "inscripcion con costo", "zonajobs",
+    "portal externo", "google forms", "hiringroom", "linkedin externo",
+]
+
+# Seniority/moderadas: en POSTULAR bajan a "REVISAR ANTES DE POSTULAR". En
+# REVISAR no hacen nada extra -- REVISAR ya es la rama cautelosa, cae en
+# "REVISAR MANUALMENTE" igual (antes esto se confundia con las graves de
+# arriba y terminaba en NO ACCIONAR por error).
+_ALERTAS_SENIORITY_ACCION = [
+    "senior", "ssr", "semi senior", "semi-senior",
+    "más de 3 años", "mas de 3 años", "4 años", "5 años", "6 años", "7 años",
+    "contractor", "monotributo",
     "inglés avanzado", "ingles avanzado", "inglés c1", "ingles c1",
-    "ssr", "semi senior", "semi-senior", "contractor", "monotributo",
-    "excluyente", "más de 3 años", "mas de 3 años", "4 años",
+    "excluyente",
 ]
 
 _MENSAJE_GENERICO_DEFAULT = (
@@ -1612,14 +1629,14 @@ def determinar_accion_sugerida(fila):
     categoria = fila.get("categoria_detectada", "") or ""
     mensaje_existente = str(fila.get("mensaje_sugerido", "") or "").strip()
 
-    hay_alerta_grave = any(kw in alertas for kw in _ALERTAS_GRAVES)
-    hay_alerta_moderada = any(kw in alertas for kw in _ALERTAS_MODERADAS)
+    hay_alerta_grave = any(kw in alertas for kw in _ALERTAS_GRAVES_ACCION)
+    hay_alerta_seniority = any(kw in alertas for kw in _ALERTAS_SENIORITY_ACCION)
 
     if hay_alerta_grave:
         accion = "NO ACCIONAR"
     elif decision == "POSTULAR":
-        accion = "REVISAR ANTES DE POSTULAR" if hay_alerta_moderada else "POSTULAR HOY"
-    else:  # REVISAR
+        accion = "REVISAR ANTES DE POSTULAR" if hay_alerta_seniority else "POSTULAR HOY"
+    else:  # REVISAR (con o sin alertas de seniority, sigue siendo REVISAR MANUALMENTE)
         accion = "REVISAR MANUALMENTE"
 
     estado_accion = "pendiente"

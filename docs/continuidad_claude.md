@@ -15,19 +15,28 @@ sin disparar un envío real todavía — ver sección 7 y 9).
 
 ## 2. Ruta exacta del proyecto
 
-**Carpeta activa (donde se trabaja, la que tiene todo lo último):**
+**Carpeta definitiva (repo git, portfolio, donde se trabaja de acá en adelante):**
 ```
-C:\Users\sergi\Documentos\Buscador de trabajo\
+C:\Users\sergi\Documentos\Buscador de trabajo\Agente-Buscador-Laboral\
 ```
 
-⚠️ **Advertencia importante:** existe una subcarpeta `Agente-Buscador-Laboral\` dentro
-de la carpeta activa, con su propio repo git (`.git`) y una copia **desactualizada**
-del script (95 KB, del 11/07 ~16:03 — sin toda la capa de postulación confirmada/click
-real). Esa subcarpeta parece ser una copia "presentable" para portfolio/GitHub, armada
-por Sergio a mano. **No confundir las dos copias.** La carpeta raíz (130+ KB) es la
-única que se debe editar. Si en algún momento hay que sincronizar la copia de
-portfolio, eso lo decide Sergio explícitamente — no asumir que hay que copiar cambios
-para allá.
+Sincronizada el 12/07: se copió el script y este mismo handoff desde la carpeta raíz
+(`C:\Users\sergi\Documentos\Buscador de trabajo\`, sin subcarpeta) hacia acá, se limpió
+`_PERFIL_SERGIO_CONTENIDO_BASE` de datos personales reales (quedó un perfil de
+ejemplo genérico), y se pusheó a `origin/main` — commit `dc18b91`. `git status` limpio
+al momento del push.
+
+⚠️ La carpeta raíz (`...\Buscador de trabajo\`, un nivel arriba) sigue existiendo con
+su propia copia del script y sus propios `vistos.json`/`historial_trabajos.xlsx`
+reales — es la copia "de trabajo diario" de antes del sync, ahora **superada** por
+esta. No editarla pensando que se propaga sola para acá: si hace falta traer algo de
+ahí, hay que copiarlo a mano de nuevo, explícitamente.
+
+⚠️ `perfil_sergio.txt` real (con nombre completo de Sergio) ya estaba commiteado en
+`origin/main` de ANTES de esta sesión (commit `52c8c3d`) y sigue en el historial de
+git aunque ahora esté en `.gitignore` — el `.gitignore` solo evita que se vuelva a
+subir si cambia, no lo saca de commits viejos. No se tocó ese historial; es decisión
+de Sergio si quiere reescribirlo.
 
 ## 3. Archivo principal
 
@@ -42,28 +51,35 @@ Panel de interruptores al principio del archivo. Valores **actuales en el archiv
 (no necesariamente los defaults recomendados — Sergio está en medio de pruebas):
 
 ```python
-MODO_EJECUCION = "TEST"              # Sergio esta probando; default recomendado: "AUTO"
+MODO_EJECUCION = "MANUAL"            # preparado para la 1ra prueba real supervisada
 ACTIVAR_INDEED = False
 GUARDAR_DEBUG_INDEED = True
 DESCARTAR_BUMERAN_EXTERNOS = True
 CT_DIAS = 2
 SONIDO_FINAL = "SUAVE"
 
-# auto-configuradas por MODO_EJECUCION (ver bloque if/elif):
+# auto-configuradas por MODO_EJECUCION=MANUAL (ver bloque if/elif):
 NAVEGADOR_VISIBLE = False
-MOSTRAR_CARTEL_FINAL = False
-ABRIR_EXCEL_AL_FINAL = False
+MOSTRAR_CARTEL_FINAL = True
+ABRIR_EXCEL_AL_FINAL = True
 MODO_TEST_GENERAR_EXCEL_AUNQUE_SEAN_REPETIDAS = False
-ANALIZAR_DESCRIPCION_DETALLE = False
+ANALIZAR_DESCRIPCION_DETALLE = True
 
 # postulacion:
-MODO_POSTULACION = "CONFIRMADA"      # Sergio probando; default recomendado: "OFF"
-DRY_RUN_POSTULACION = True           # IMPORTANTE: sigue en True, no se envio nada real todavia
+MODO_POSTULACION = "CONFIRMADA"
+DRY_RUN_POSTULACION = True           # ⚠️ A PROPOSITO sigue en True: el envio real
+                                      # NO esta habilitado todavia. Cambiar a False
+                                      # es la accion que dispara la prueba real, y
+                                      # la tiene que hacer Sergio explicitamente.
 MAX_POSTULACIONES_POR_CORRIDA = 1
 PROBAR_POSTULACION_EN_TEST = False
 
 FUENTES = [bumeran, computrabajo]    # Indeed opcional via ACTIVAR_INDEED
 ```
+
+Esta es EXACTAMENTE la config para la primera prueba real supervisada (sección 11),
+salvo por `DRY_RUN_POSTULACION`, que queda en `True` a propósito hasta que Sergio
+decida disparar la prueba de verdad.
 
 ## 5. Funcionalidades implementadas
 
@@ -89,6 +105,50 @@ FUENTES = [bumeran, computrabajo]    # Indeed opcional via ACTIVAR_INDEED
 - **Postulación asistida/automática segura** — ver sección 7.
 
 ## 6. Cambios recientes (más nuevo primero)
+
+- **Fix: la bandeja de ACCIONES enterraba REVISAR en NO ACCIONAR por culpa de la
+  palabra "senior".** `determinar_accion_sugerida()` usaba `_ALERTAS_GRAVES`
+  (compartida con `_postulacion_es_segura`, que SÍ incluye `"senior"`/`"5 años"` etc.
+  como graves) para decidir `NO ACCIONAR` — eso pisaba la rama `REVISAR MANUALMENTE`
+  antes de que se evaluara. Se separaron 2 listas nuevas, propias de esta capa:
+  `_ALERTAS_GRAVES_ACCION` (estafa/portal externo real: pagar para postular, curso
+  pago, zonajobs, google forms, hiringroom, linkedin externo, etc. — siempre
+  NO ACCIONAR) y `_ALERTAS_SENIORITY_ACCION` (senior, ssr, contractor, monotributo,
+  inglés avanzado, excluyente, etc. — en POSTULAR bajan a "REVISAR ANTES DE
+  POSTULAR", en REVISAR ya no fuerzan nada, cae en "REVISAR MANUALMENTE" como
+  corresponde).
+  - *Por qué*: la corrida MANUAL real (12/07) dio 2 ofertas REVISAR (Copilot
+    Developer, Técnico de mantenimiento) y las 2 terminaron en NO ACCIONAR en vez de
+    REVISAR MANUALMENTE, dejando esa categoría en 0 — invisibles para Sergio aunque
+    fueran legítimamente revisables.
+  - *Qué se probó*: 5 casos unitarios de `determinar_accion_sugerida()` (POSTULAR sin
+    alertas → POSTULAR HOY; POSTULAR con senior → REVISAR ANTES DE POSTULAR; REVISAR
+    con senior → REVISAR MANUALMENTE; REVISAR con "pagar para postular" → NO ACCIONAR;
+    POSTULAR con zonajobs → NO ACCIONAR) — los 5 correctos. Se simularon las 2 filas
+    reales del Excel de la corrida (`Copilot Developer` con
+    `senior; contractor; salario bajo`, `Técnico de mantenimiento` con `senior`) → las
+    2 ahora dan `REVISAR MANUALMENTE`, ninguna pasó a `POSTULAR HOY` (a propósito, no
+    se aflojó el clasificador principal).
+  - *No se tocó*: `_ALERTAS_GRAVES` original (la usa `_postulacion_es_segura`, el gate
+    del envío real), `clasificar_decision`, `ajustar_decision_por_descripcion`,
+    `DRY_RUN_POSTULACION`, ni el flujo de postulación real.
+  - *Pendiente*: el falso positivo de `"salario bajo (~$11.111)"` en Copilot Developer
+    (probablemente el regex de salario agarró un número que no es un sueldo) — no se
+    tocó, queda para revisar aparte.
+
+- **Config preparada para la 1ra prueba real supervisada, sin dispararla.**
+  `MODO_EJECUCION` cambiado de `"TEST"` a `"MANUAL"` en el archivo; el resto
+  (`MODO_POSTULACION="CONFIRMADA"`, `MAX_POSTULACIONES_POR_CORRIDA=1`,
+  `PROBAR_POSTULACION_EN_TEST=False`) ya estaba correcto.
+  - *Por qué*: dejar todo listo para que Sergio dispare la primera postulación real
+    supervisada apenas decida hacerlo, sin tener que tocar config en el momento.
+  - *Qué se probó*: solo se verificó que compile (`py -3.14 -m py_compile`). No se
+    corrió el script.
+  - *Qué queda pendiente*: `DRY_RUN_POSTULACION` sigue en `True` a propósito — no se
+    tocó, no se ejecutó el buscador, no se hizo commit. El paso de cambiar
+    `DRY_RUN_POSTULACION=False` y correrlo es explícitamente de Sergio.
+  - *Advertencia de seguridad*: ninguna, este cambio no habilita nada nuevo — solo
+    prepara la config. La barrera real (`DRY_RUN_POSTULACION=True`) sigue intacta.
 
 - **Conectado el click real de postulación**, SOLO para
   `MANUAL + CONFIRMADA + DRY_RUN_POSTULACION=False + confirmación humana doble`.
@@ -133,9 +193,17 @@ FUENTES = [bumeran, computrabajo]    # Indeed opcional via ACTIVAR_INDEED
 - `MODO_EJECUCION="DEMO"` con `generar_datos_demo()` (6 ofertas simuladas, sin
   internet, sin tocar historial).
 
+- **Sync + push a `origin/main` (commit `dc18b91`)**: script y `docs/continuidad_claude.md`
+  copiados desde la carpeta raíz hacia acá (repo git), con backup del script viejo
+  (`buscador_trabajos_v2_BACKUP_antes_sync.py`, gitignoreado). `.gitignore` ampliado
+  (`postulaciones_log.xlsx`, `perfil_sergio.txt`, el backup). `_PERFIL_SERGIO_CONTENIDO_BASE`
+  despersonalizado (nombre real → "Perfil de ejemplo", sin universidad). `git status`
+  quedó limpio tras el push. Ver advertencias en sección 2 sobre la carpeta raíz
+  (ahora superada) y sobre `perfil_sergio.txt` ya presente en commits viejos.
+
 - README.md, requirements.txt, .gitignore, docs/guion_presentacion.md,
-  docs/estructura_proyecto.md — **creados dentro de la subcarpeta
-  `Agente-Buscador-Laboral/`**, no en la raíz (ver advertencia en sección 2).
+  docs/estructura_proyecto.md — creados originalmente en esta misma carpeta (ya era
+  el repo git desde el principio; la raíz nunca los tuvo).
 
 ## 7. Estado de la postulación asistida/confirmada
 
@@ -220,21 +288,33 @@ el resumen de la tarea anterior. Esa primera prueba la debe hacer Sergio en pers
 - `_TEXTOS_BOTON_POSTULACION` solo se verificó en una oferta de cada fuente — otros
   tipos de aviso (ej. con formulario extendido, o de empresas que usan un flujo
   distinto) podrían usar textos distintos todavía no vistos.
-- README.md / requirements.txt / docs/ están en la subcarpeta de portfolio, no en la
-  raíz activa — decidir si conviene tener una copia (o symlink) también acá, o dejarlo
-  así a propósito.
-- No se sincronizó nunca la copia de `Agente-Buscador-Laboral/` con los cambios
-  recientes (sigue en la versión del 11/07 ~16:03, sin la capa de postulación
-  confirmada).
+- Decidir si vale la pena reescribir el historial de git para sacar el
+  `perfil_sergio.txt` real del commit `52c8c3d` (con nombre completo), o dejarlo
+  como está.
+- La carpeta raíz (`...\Buscador de trabajo\`) quedó con su propia copia desactualizada
+  del script post-sync — no es un problema en sí, pero si se sigue usando por hábito
+  hay que acordarse de que ya no es la fuente de verdad.
 
 ## 11. Próximo paso recomendado
 
-Antes de nada nuevo: que Sergio corra manualmente
-`MODO_EJECUCION="MANUAL"`, `MODO_POSTULACION="CONFIRMADA"`,
-`DRY_RUN_POSTULACION=False`, sobre UNA oferta elegida a mano, para validar que
-`detectar_boton_postulacion`/`enviar_postulacion_confirmada` funcionan de punta a
-punta contra el sitio real. Recién después de eso conviene seguir iterando sobre esa
-capa (ej. ajustar `_TEXTOS_EXITO_POSTULACION` con el mensaje real que aparezca).
+**Todo queda preparado para la primera prueba real supervisada, pero SIN dispararla.**
+La config del archivo (sección 4) ya tiene `MODO_EJECUCION="MANUAL"`,
+`MODO_POSTULACION="CONFIRMADA"`, `MAX_POSTULACIONES_POR_CORRIDA=1`,
+`PROBAR_POSTULACION_EN_TEST=False` — todo listo salvo `DRY_RUN_POSTULACION`, que
+sigue en `True` a propósito.
+
+El paso que falta, y que tiene que decidir y ejecutar Sergio explícitamente:
+1. Cambiar `DRY_RUN_POSTULACION` a `False` en el archivo.
+2. Correr el script sobre UNA oferta elegida a mano.
+3. Responder los 2 prompts de confirmación por consola.
+4. Ver qué pasa de verdad contra `detectar_boton_postulacion`/
+   `enviar_postulacion_confirmada` en el sitio real.
+
+Recién después de esa prueba conviene seguir iterando sobre esa capa (ej. ajustar
+`_TEXTOS_EXITO_POSTULACION` con el mensaje real que aparezca — ver sección 10).
+
+Ninguna sesión de Claude Code debe cambiar `DRY_RUN_POSTULACION` a `False` ni correr
+el script en este estado sin que Sergio lo pida explícitamente en el momento.
 
 ## 12. Qué NO se debe tocar
 
