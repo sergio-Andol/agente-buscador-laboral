@@ -306,6 +306,26 @@ DECISION_POSTULAR_KEYWORDS_CONTEXTO = [
     "buenos aires", "administrativo",
 ]
 
+# Categorias (nombres tal cual los devuelve detectar_categoria(), ver
+# CATEGORIAS_KEYWORDS mas abajo) que pueden llegar a POSTULAR solo con las
+# keywords FUERTES de arriba, sin exigir nada mas -- tu perfil objetivo.
+CATEGORIAS_PRINCIPALES_IT = {
+    "Data / BI", "Soporte IT", "QA / Testing", "Desarrollo", "Analista Funcional",
+}
+
+# Categorias secundarias (Supply Chain, Administrativo/Procesos, y por
+# extension cualquier otra que no este en CATEGORIAS_PRINCIPALES_IT, ej.
+# "Técnico / Producción" u "Otro"): aunque matcheen 2+ keywords FUERTES,
+# solo llegan a POSTULAR si ADEMAS aparece una señal tecnica real de esta
+# lista. Sin eso, se quedan en REVISAR -- evita que "Analista de Compras y
+# Abastecimiento" (Supply Chain, sin nada tecnico) llegue a POSTULAR HOY
+# solo por matchear "administrativo sistemas"/"junior"/etc.
+DECISION_SENAL_TECNICA_SECUNDARIA = [
+    "sql", "power bi", "excel avanzado", "reporting", "dashboard", "datos",
+    "análisis de datos", "analisis de datos", "sistema", "sistemas", "erp",
+    "automatización", "automatizacion", "automation", "python",
+]
+
 # Si aparece cualquiera de estas, DESCARTAR gana sobre POSTULAR (se chequea
 # primero). Las frases largas ("mas de 3 años excluyente", etc.) solo
 # matchean si literalmente aparecen en el titulo -- no hay descripcion
@@ -1230,12 +1250,34 @@ def clasificar_decision(fila):
         partes_motivo.append(f"match fuerte: {', '.join(fuertes_hits)}")
     if contexto_hits:
         partes_motivo.append(f"contexto: {', '.join(contexto_hits)}")
-    motivo = " | ".join(partes_motivo) if partes_motivo else \
-        "sin señales claras en título/ubicación, revisar manualmente"
     prioridad = cant_fuertes * 2 + len(contexto_hits)
 
-    if cant_fuertes >= DECISION_POSTULAR_MIN_MATCHES_FUERTES:
-        return "POSTULAR", motivo, prioridad
+    categoria = detectar_categoria(fila)
+
+    if categoria in CATEGORIAS_PRINCIPALES_IT:
+        # Perfil objetivo (Data/BI, Soporte IT, QA/Testing, Desarrollo,
+        # Analista Funcional): 2+ keywords FUERTES alcanzan, como antes.
+        motivo = " | ".join(partes_motivo) if partes_motivo else \
+            "sin señales claras en título/ubicación, revisar manualmente"
+        if cant_fuertes >= DECISION_POSTULAR_MIN_MATCHES_FUERTES:
+            return "POSTULAR", motivo, prioridad
+        return "REVISAR", motivo, prioridad
+
+    # Categoria secundaria (Supply Chain, Administrativo/Procesos, y por
+    # extension cualquier otra fuera del perfil IT, ej. Técnico/Producción
+    # u Otro): el conteo de FUERTES es irrelevante aca (son señales
+    # pensadas para el perfil IT, no para esta categoria) -- lo que decide
+    # es si hay una señal TECNICA real, sin importar cuantas fuertes/
+    # contexto haya. Sin eso, se queda en REVISAR (puede subir despues en
+    # ajustar_decision_por_descripcion() si la descripcion completa trae
+    # esa señal aunque el titulo no).
+    señal_tecnica = [kw for kw in DECISION_SENAL_TECNICA_SECUNDARIA if _matchea_keyword(kw, texto)]
+    if señal_tecnica:
+        partes_motivo.append(f"señal técnica en categoría secundaria ({categoria}): {', '.join(señal_tecnica)}")
+        return "POSTULAR", " | ".join(partes_motivo), prioridad + len(señal_tecnica)
+
+    partes_motivo.append(f"categoría secundaria ({categoria}) sin señal técnica en título -> REVISAR")
+    motivo = " | ".join(partes_motivo)
     return "REVISAR", motivo, prioridad
 
 
@@ -1591,6 +1633,22 @@ def ajustar_decision_por_descripcion(fila):
     elif hits_seniority == 1 and decision == "POSTULAR":
         ajustes.append("bajado a REVISAR: la descripción pide algo de seniority que el título no dejaba ver")
         decision = "REVISAR"
+
+    # Categoria secundaria (Supply Chain/Administrativo/etc.) que se quedo
+    # en REVISAR en clasificar_decision() por no tener señal tecnica en el
+    # TITULO: si la descripcion completa si trae una señal tecnica real,
+    # puede subir a POSTULAR aca -- pero solo si arriba no la mando a
+    # DESCARTAR por seniority (ese chequeo ya corrio, tiene prioridad).
+    if (decision == "REVISAR" and "categoría secundaria" in motivo
+            and "sin señal técnica en título" in motivo):
+        señal_tecnica_desc = [kw for kw in DECISION_SENAL_TECNICA_SECUNDARIA
+                               if _matchea_keyword(kw, texto)]
+        if señal_tecnica_desc:
+            decision = "POSTULAR"
+            ajustes.append(
+                "subido a POSTULAR: la descripción trae señal técnica real "
+                f"({', '.join(señal_tecnica_desc)}) para esta categoría secundaria"
+            )
 
     if hits_skills:
         prioridad += hits_skills

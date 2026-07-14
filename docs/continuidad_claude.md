@@ -106,6 +106,70 @@ decida disparar la prueba de verdad.
 
 ## 6. Cambios recientes (más nuevo primero)
 
+- **Gate de categoría secundaria: Supply Chain / Administrativo / Procesos ya
+  no llegan a POSTULAR sin señal técnica real.**
+  - *Por qué*: una corrida MANUAL (13/07 23:35, sobre "Analista de Compras y
+    Abastecimiento") volvió a dar POSTULAR HOY para una oferta categoría
+    Supply Chain, sin ningún skill técnico — mismo patrón de sobre-permisividad
+    de antes, ahora vía la categoría en vez de ubicación/modalidad.
+    ⚠️ Nota: esa corrida salió de la **carpeta raíz** (copia superada), no de
+    esta carpeta — no representa el comportamiento del código actual. Aun así
+    el diagnóstico y el fix pedidos por Sergio son válidos y se hicieron acá.
+  - *Fix aplicado*: `clasificar_decision()` ahora llama a `detectar_categoria()`
+    (antes solo se calculaba después, para la columna informativa). Si la
+    categoría es una de las 5 principales del perfil objetivo
+    (`CATEGORIAS_PRINCIPALES_IT` = Data/BI, Soporte IT, QA/Testing,
+    Desarrollo, Analista Funcional), sigue la regla de siempre (2+ keywords
+    FUERTES). Si es cualquier otra categoría (Supply Chain, Administrativo/
+    Procesos, Técnico/Producción, Otro), el conteo de FUERTES ya no decide
+    nada — se exige en cambio al menos 1 señal de `DECISION_SENAL_TECNICA_SECUNDARIA`
+    (sql, python, power bi, excel avanzado, reporting, dashboard, datos,
+    análisis de datos, sistema/sistemas, erp, automatización/automation) en el
+    mismo texto. Sin esa señal, queda en REVISAR con el motivo explícito
+    "categoría secundaria (X) sin señal técnica en título".
+  - **Corrección durante el propio desarrollo**: la primera versión exigía
+    2 FUERTES *antes* de siquiera evaluar la categoría secundaria — con eso,
+    "compras + ERP" (0 fuertes) nunca llegaba a evaluarse y quedaba en
+    REVISAR aunque tuviera ERP, al revés de lo pedido. Se corrigió: para
+    categoría secundaria, la señal técnica decide por sí sola, sin depender
+    del conteo de FUERTES (que son señales pensadas para el perfil IT, no
+    para Supply Chain/Administrativo).
+  - **Subida REVISAR → POSTULAR por descripción real** (nueva capacidad en
+    `ajustar_decision_por_descripcion()`, que antes solo bajaba decisión o
+    sumaba prioridad, nunca subía): si el título no tenía señal técnica pero
+    la **descripción completa real** sí, y no hay alertas de seniority que la
+    bajen primero, sube a POSTULAR con motivo explícito. El chequeo de
+    seniority (2+ señales → DESCARTAR) sigue corriendo *antes*, así que
+    seniority/excluyente siempre gana sobre esta subida.
+  - *Qué se probó*: `py -3.14 -m py_compile` → compila. 7 casos unitarios
+    (Data/BI con SQL+Power BI → POSTULAR; Soporte IT Junior+Mesa de Ayuda →
+    POSTULAR; Supply Chain compras+abastecimiento sin técnica → REVISAR;
+    Supply Chain compras+ERP → POSTULAR; Administrativo sin técnica →
+    REVISAR; Administrativo con sistemas+automatización → POSTULAR;
+    senior+excluyente con ERP → DESCARTAR, nunca sube) → los 7 correctos.
+    Reprocesado el flujo completo con el título real "Analista de Compras y
+    Abastecimiento" (Capital Federal, Híbrido): paso 1 (solo título) →
+    REVISAR/categoría secundaria sin técnica; paso 2a (descripción real sin
+    técnica) → sigue REVISAR; paso 2b (descripción con ERP/reporting/Excel
+    avanzado) → sube a POSTULAR con motivo explícito.
+  - *Nota/limitación conocida*: si un título de categoría secundaria incluye
+    palabras que también son keywords de `CATEGORIAS_KEYWORDS["Data / BI"]`
+    (ej. "reporting", "excel avanzado"), `detectar_categoria()` puede
+    reclasificarlo como Data/BI (categoría principal) en vez de Administrativo/
+    Supply Chain — en ese caso pasa a regirse por la regla de 2 FUERTES en
+    vez de la de 1 señal técnica. No es un bug: si el título ya "suena" a
+    Data/BI, tiene sentido pedirle el estándar de esa categoría. Confirmado
+    con un caso de prueba.
+  - *No se tocó*: postulación real, `DRY_RUN_POSTULACION`, `truststore`,
+    historial. No se corrió el buscador completo todavía con este fix.
+  - *Pendiente*: la carpeta raíz (`...\Buscador de trabajo\`, sin
+    subcarpeta) se volvió a usar para una corrida (13/07 23:35) — segunda
+    vez que pasa. Sigue **sin** ninguno de los fixes de esta sesión (SSL,
+    búsqueda, clasificador) y sigue con `DRY_RUN_POSTULACION=False` (ver
+    advertencia ya existente en sección 2). Sergio debería decidir si
+    quiere dejar de usar esa carpeta del todo, o sincronizarla, para que
+    esto no se repita.
+
 - **Fix: `clasificar_decision()` llegaba a POSTULAR solo con señales de
   contexto (ubicación/modalidad/rubro), sin ningún skill técnico real.**
   - *Por qué*: la corrida MANUAL del 13/07 (19:16) marcó "Administrativo de
