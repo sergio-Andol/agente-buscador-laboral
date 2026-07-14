@@ -320,11 +320,23 @@ CATEGORIAS_PRINCIPALES_IT = {
 # lista. Sin eso, se quedan en REVISAR -- evita que "Analista de Compras y
 # Abastecimiento" (Supply Chain, sin nada tecnico) llegue a POSTULAR HOY
 # solo por matchear "administrativo sistemas"/"junior"/etc.
+# OJO: "sistema"/"sistemas" y "datos" (sueltos) NO estan aca a proposito --
+# son demasiado genericos ("cualquier trabajo administrativo usa un
+# sistema") y antes disparaban POSTULAR solos. Quedan en
+# DECISION_SENAL_CONTEXTO_SECUNDARIA (suman contexto, nunca deciden solos).
 DECISION_SENAL_TECNICA_SECUNDARIA = [
-    "sql", "power bi", "excel avanzado", "reporting", "dashboard", "datos",
-    "análisis de datos", "analisis de datos", "sistema", "sistemas", "erp",
+    "sql", "power bi", "bi", "excel avanzado", "reporting", "reportes",
+    "dashboard", "análisis de datos", "analisis de datos", "erp",
     "automatización", "automatizacion", "automation", "python",
+    "base de datos", "bases de datos", "macros", "indicadores", "kpi",
 ]
+
+# Señales debiles/genericas para categoria secundaria: "sistema"/"sistemas"
+# y "datos" sueltos. Aparecen en la mayoria de los avisos administrativos
+# sin implicar nada tecnico real -- suman como contexto en el motivo, pero
+# NUNCA alcanzan por si solas para subir a POSTULAR (a diferencia de
+# DECISION_SENAL_TECNICA_SECUNDARIA de arriba).
+DECISION_SENAL_CONTEXTO_SECUNDARIA = ["sistema", "sistemas", "datos"]
 
 # Si aparece cualquiera de estas, DESCARTAR gana sobre POSTULAR (se chequea
 # primero). Las frases largas ("mas de 3 años excluyente", etc.) solo
@@ -1272,11 +1284,24 @@ def clasificar_decision(fila):
     # ajustar_decision_por_descripcion() si la descripcion completa trae
     # esa señal aunque el titulo no).
     señal_tecnica = [kw for kw in DECISION_SENAL_TECNICA_SECUNDARIA if _matchea_keyword(kw, texto)]
+    señal_contexto_sec = [kw for kw in DECISION_SENAL_CONTEXTO_SECUNDARIA if _matchea_keyword(kw, texto)]
+
     if señal_tecnica:
         partes_motivo.append(f"señal técnica en categoría secundaria ({categoria}): {', '.join(señal_tecnica)}")
+        if señal_contexto_sec:
+            partes_motivo.append(f"contexto secundario: {', '.join(señal_contexto_sec)}")
         return "POSTULAR", " | ".join(partes_motivo), prioridad + len(señal_tecnica)
 
-    partes_motivo.append(f"categoría secundaria ({categoria}) sin señal técnica en título -> REVISAR")
+    # "sistema"/"sistemas"/"datos" sueltos NO alcanzan por si solos -- solo
+    # se mencionan en el motivo como contexto, la decision sigue en REVISAR.
+    # Marcador ESTABLE (siempre el mismo texto final, sin importar si hay
+    # contexto o no) -- ajustar_decision_por_descripcion() lo busca literal
+    # para saber si puede intentar subir a POSTULAR con la descripcion real.
+    if señal_contexto_sec:
+        partes_motivo.append(f"contexto secundario: {', '.join(señal_contexto_sec)}")
+    partes_motivo.append(
+        f"categoría secundaria ({categoria}) sin señal técnica real en título -> REVISAR"
+    )
     motivo = " | ".join(partes_motivo)
     return "REVISAR", motivo, prioridad
 
@@ -1640,7 +1665,7 @@ def ajustar_decision_por_descripcion(fila):
     # puede subir a POSTULAR aca -- pero solo si arriba no la mando a
     # DESCARTAR por seniority (ese chequeo ya corrio, tiene prioridad).
     if (decision == "REVISAR" and "categoría secundaria" in motivo
-            and "sin señal técnica en título" in motivo):
+            and "sin señal técnica real en título" in motivo):
         señal_tecnica_desc = [kw for kw in DECISION_SENAL_TECNICA_SECUNDARIA
                                if _matchea_keyword(kw, texto)]
         if señal_tecnica_desc:

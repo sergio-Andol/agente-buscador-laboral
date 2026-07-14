@@ -106,6 +106,43 @@ decida disparar la prueba de verdad.
 
 ## 6. Cambios recientes (más nuevo primero)
 
+- **Ajuste: "sistema"/"sistemas"/"datos" sueltos ya no alcanzan para subir
+  una categoría secundaria a POSTULAR.**
+  - *Por qué*: la corrida MANUAL del 14/07 (11:00, `trabajos_2026-07-14_11-00-31.xlsx`)
+    volvió a marcar "Analista de Compras y Abastecimiento" (Supply Chain)
+    como POSTULAR HOY — el gate del fix anterior funcionó (necesitaba señal
+    técnica), pero "sistema"/"sistemas" en la descripción ya alcanzaba, y son
+    demasiado genéricos (casi cualquier puesto administrativo menciona "el
+    sistema").
+  - *Fix aplicado*: `DECISION_SENAL_TECNICA_SECUNDARIA` se separó en dos.
+    La lista fuerte (dispara POSTULAR) ya NO tiene `sistema`/`sistemas`/
+    `datos` sueltos — se agregaron en cambio señales más específicas:
+    `bi`, `reportes`, `base de datos`, `bases de datos`, `macros`,
+    `indicadores`, `kpi` (además de las que ya estaban: sql, power bi, excel
+    avanzado, reporting, dashboard, análisis de datos, erp, automatización,
+    python). Nueva lista separada `DECISION_SENAL_CONTEXTO_SECUNDARIA =
+    ["sistema", "sistemas", "datos"]` — aparecen en el motivo como
+    "contexto secundario", suman prioridad, pero **nunca** alcanzan solas
+    para POSTULAR (ni en `clasificar_decision()` ni en la subida por
+    descripción de `ajustar_decision_por_descripcion()`, que usa la misma
+    lista fuerte).
+  - *Qué se probó*: `py -3.14 -m py_compile` → compila. 11 casos unitarios
+    (Supply Chain + sistema → REVISAR; + sistemas → REVISAR; + ERP →
+    POSTULAR; + reporting → POSTULAR; + Excel avanzado → POSTULAR;
+    Administrativo + sistema → REVISAR; + sistemas → REVISAR; + reportes/KPI
+    → POSTULAR; Data/BI SQL+Power BI → POSTULAR; senior+excluyente con ERP →
+    DESCARTAR) → 10 de 11 correctos. El caso "Supply Chain + Power BI"
+    esperaba POSTULAR pero dio REVISAR — **no es bug**: "Power BI" es
+    keyword de la categoría "Data / BI" en `CATEGORIAS_KEYWORDS`, así que
+    `detectar_categoria()` reclasifica el título como Data/BI (principal) en
+    vez de Supply Chain, y ahí rige la regla de 2 FUERTES (solo tenía 1) —
+    mismo comportamiento ya documentado la entrada anterior. Reprocesada la
+    fila real "Analista de Compras y Abastecimiento" con descripción que
+    solo menciona "sistema de gestión"/"sistema interno" (el caso exacto
+    reportado) → se mantiene en **REVISAR** (antes: POSTULAR).
+  - *No se tocó*: postulación real, `DRY_RUN_POSTULACION`, `truststore`,
+    historial. No se corrió búsqueda completa todavía con este ajuste.
+
 - **Gate de categoría secundaria: Supply Chain / Administrativo / Procesos ya
   no llegan a POSTULAR sin señal técnica real.**
   - *Por qué*: una corrida MANUAL (13/07 23:35, sobre "Analista de Compras y
