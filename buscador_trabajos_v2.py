@@ -365,6 +365,26 @@ DECISION_RUBROS_EXCLUIDOS = [
     "recursos humanos",
 ]
 
+# Version ESTRICTA de rubro excluido, solo para re-chequear contra la
+# DESCRIPCION COMPLETA (pagina cruda scrapeada) en
+# ajustar_decision_por_descripcion() -- NO usar DECISION_DESCARTAR_KEYWORDS
+# ni DECISION_RUBROS_EXCLUIDOS completas aca. Esa pagina trae mucho mas que
+# el aviso real: el disclaimer anti-estafa fijo de Bumeran menciona
+# "reclutador" en TODOS los avisos; la seccion "Empleos relacionados" puede
+# mostrar cualquier empresa (ej. "Adecco RECURSOS HUMANOS", "BUSCAMOS
+# TALENTOS") sin que tenga nada que ver con el aviso evaluado; y
+# "seleccion"/"selección" sueltas matchean el verbo comun "seleccionará".
+# Confirmado en vivo (14/07) con la oferta "Analista Sr. de Calidad": las
+# 4 palabras "reclutador/talento/recursos humanos/seleccion" salian de esas
+# 3 fuentes de ruido, ninguna del aviso real. Por eso aca solo van frases
+# especificas de bajo riesgo (poco probable que aparezcan sueltas en
+# disclaimers/avisos relacionados/verbos genericos).
+DECISION_RUBROS_EXCLUIDOS_DESCRIPCION = [
+    "call center", "contact center", "screening", "reclutamiento",
+    "selección de personal", "seleccion de personal",
+    "human resources", "hr business partner", "hr generalist",
+]
+
 # Umbral: con esta cantidad o mas de keywords FUERTES matcheadas, se marca
 # POSTULAR. Con 1 sola fuerte -> REVISAR. Con 0 fuertes (aunque haya
 # contexto) -> nunca POSTULAR, como mucho REVISAR.
@@ -1253,6 +1273,28 @@ def _matchea_keyword(kw, texto):
     return kw in texto
 
 
+# Abreviaturas de seniority (Sr./SSr/Semi Senior/Semi-senior/Semi Sr.) que
+# "senior" (palabra completa) no detecta. Con limite de palabra (\b) para
+# no confundir con "Jr"/"junior" (no comparten letras con "sr"/"ssr", no
+# hay riesgo) ni con substrings de otras palabras (ej. "Israel" no matchea
+# porque no hay borde de palabra antes de la "s"). Riesgo residual
+# aceptado a proposito: "Sr." tambien es como se abrevia "Señor" en
+# espanol formal ("El Sr. Pérez..."), asi que en textos muy formales
+# podria dar un falso positivo -- se prioriza no perderse abreviaturas
+# reales de seniority en avisos de trabajo.
+_PATRONES_SENIORITY_ABREVIADA = [
+    ("semi senior/semi-senior", re.compile(r"\bsemi[-\s]?senior\b")),
+    ("semi sr", re.compile(r"\bsemi\s+s?sr\.?\b")),
+    ("sr/ssr", re.compile(r"\bs?sr\.?\b")),
+]
+
+
+def _hits_seniority_abreviada(texto):
+    """Devuelve las etiquetas de _PATRONES_SENIORITY_ABREVIADA que
+    matchean en `texto` (ya en minusculas)."""
+    return [label for label, pat in _PATRONES_SENIORITY_ABREVIADA if pat.search(texto)]
+
+
 def clasificar_decision(fila):
     """Capa de decision sobre un aviso que ya paso todos los filtros.
     No descarta nada: solo sugiere. Devuelve (decision_sugerida,
@@ -1265,6 +1307,7 @@ def clasificar_decision(fila):
                       ("titulo", "empresa", "ubicacion", "modalidad", "busqueda")).lower()
 
     descartar_hits = [kw for kw in DECISION_DESCARTAR_KEYWORDS + DECISION_RUBROS_EXCLUIDOS if kw in texto]
+    descartar_hits += _hits_seniority_abreviada(texto)
     if descartar_hits:
         return "DESCARTAR", f"excluido por: {', '.join(descartar_hits)}", 0
 
@@ -1663,7 +1706,8 @@ def ajustar_decision_por_descripcion(fila):
         return decision, motivo, prioridad
 
     ajustes = []
-    hits_seniority = sum(1 for kw in _ALERTAS_SENIORIDAD if kw in texto)
+    hits_seniority = (sum(1 for kw in _ALERTAS_SENIORIDAD if kw in texto)
+                       + len(_hits_seniority_abreviada(texto)))
     hits_skills = sum(1 for kw in _SKILLS_POSITIVOS if kw in texto)
     hits_junior = sum(1 for kw in _SIGNALS_JUNIOR if kw in texto)
 
@@ -1681,8 +1725,12 @@ def ajustar_decision_por_descripcion(fila):
     # nunca suba: si la descripcion tiene rubro excluido, sql/erp/sistema/
     # datos ahi probablemente describen herramientas internas de la
     # empresa, no el rol que se ofrece.
-    rubro_excluido_hits = [kw for kw in DECISION_DESCARTAR_KEYWORDS + DECISION_RUBROS_EXCLUIDOS
-                            if kw in texto]
+    # Usa la lista ESTRICTA (no DECISION_DESCARTAR_KEYWORDS/RUBROS_EXCLUIDOS
+    # completas): la pagina cruda trae disclaimer/avisos relacionados/verbos
+    # genericos que generan falsos positivos con terminos cortos como
+    # "reclutador"/"talento"/"recursos humanos"/"seleccion" sueltas -- ver
+    # comentario de DECISION_RUBROS_EXCLUIDOS_DESCRIPCION mas arriba.
+    rubro_excluido_hits = [kw for kw in DECISION_RUBROS_EXCLUIDOS_DESCRIPCION if kw in texto]
     if rubro_excluido_hits and decision != "DESCARTAR":
         ajustes.append(
             f"descartado por descripción: rubro excluido detectado ({', '.join(rubro_excluido_hits)})"

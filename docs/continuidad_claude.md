@@ -106,6 +106,92 @@ decida disparar la prueba de verdad.
 
 ## 6. Cambios recientes (más nuevo primero)
 
+- **Fix: seniority abreviada (Sr./SSr/Semi Senior/Semi-senior/Semi Sr.) no
+  se detectaba, solo la palabra completa "senior".**
+  - *Por qué*: al arreglar el falso positivo de "Analista Sr. de Calidad" en
+    la entrada anterior, quedó expuesto que esa oferta pasaba a REVISAR en
+    vez de DESCARTAR — el título usa la abreviatura "Sr.", que ni el chequeo
+    de título ni `_ALERTAS_SENIORIDAD` (descripción) reconocían como
+    seniority.
+  - *Fix aplicado*: nuevos patrones regex `_PATRONES_SENIORITY_ABREVIADA`
+    (`\bsemi[-\s]?senior\b`, `\bsemi\s+s?sr\.?\b`, `\bs?sr\.?\b`), con
+    límite de palabra (`\b`) para no confundir con "Jr"/"junior" (no
+    comparten letras con "sr"/"ssr") ni con substrings de otras palabras
+    (ej. "Israel" no matchea, no hay borde de palabra antes de la "s"). Se
+    suman al chequeo de **título** en `clasificar_decision()` y al conteo
+    de `hits_seniority` en **descripción** dentro de
+    `ajustar_decision_por_descripcion()`.
+  - *Riesgo residual aceptado a propósito*: "Sr." también es como se
+    abrevia "Señor" en español formal (ej. "El Sr. Pérez los recibirá") —
+    en un texto muy formal podría dar un falso positivo. Se priorizó no
+    perderse abreviaturas reales de seniority en avisos de trabajo (uso
+    mucho más común en este contexto que la forma de tratamiento formal).
+  - *Qué se probó*: `py -3.14 -m py_compile` → compila. 9 casos unitarios
+    (Sr./SSr-Sr/Semi Senior/semi-senior/semi sr. → DESCARTAR; Junior/Jr →
+    NO descarta por seniority; Data/BI Junior SQL+Power BI → POSTULAR;
+    senior+excluyente con ERP → DESCARTAR) → los 9 correctos. Reprocesados
+    los 3 casos pedidos: "Analista Sr. de Calidad" pasó de REVISAR (turno
+    anterior) a **DESCARTAR** ("excluido por: sr/ssr", ya en el título);
+    "técnico soporte" (con "IT SSr / Sr" en la descripción real) sigue
+    **DESCARTAR**, ahora con motivo más preciso (2 señales de seniority,
+    detecta el "Sr" real en vez de depender de otras palabras); oferta
+    Data/BI simulada con disclaimer de Bumeran sigue **POSTULAR** sin
+    cambios (no tiene sr/ssr, no se ve afectada).
+  - *No se tocó*: postulación real, `DRY_RUN_POSTULACION`, `truststore`,
+    historial. No se corrió el buscador completo con este fix.
+
+- **Fix: el re-chequeo de rubro excluido contra la descripción daba falsos
+  positivos por ruido de la página (disclaimer, empleos relacionados,
+  verbos genéricos).**
+  - *Por qué*: en `trabajos_2026-07-14_13-06-46.xlsx`, "Analista Sr. de
+    Calidad" (Bumeran) quedó DESCARTAR con motivo "rubro excluido detectado
+    (senior, reclutador, talento, seleccion, recursos humanos)". Se bajó la
+    página real (3991 caracteres) y se confirmó que ninguna de esas 4
+    palabras venía del aviso: `"reclutador"` sale del **disclaimer
+    anti-estafa fijo de Bumeran** (aparece en todos sus avisos: "Ningún
+    reclutador te pedirá pagar..."); `"talento"`/`"recursos humanos"` salen
+    de la sección **"Empleos relacionados"**, mostrando un aviso de
+    **Adecco** (otra empresa, sin relación); `"seleccion"` matcheó el verbo
+    "seleccion**ará**", no el sustantivo. El fix de la entrada anterior
+    (re-chequear rubro excluido contra la descripción completa) tenía este
+    riesgo latente desde el día que se agregó — podía estar bajando ofertas
+    buenas de Bumeran sin que se note, ya que "reclutador" está en el
+    disclaimer de (probablemente) todos sus avisos.
+  - *Fix aplicado*: nueva lista `DECISION_RUBROS_EXCLUIDOS_DESCRIPCION`,
+    solo con frases específicas de bajo riesgo de aparecer como ruido de
+    página (`call center`, `contact center`, `screening`, `reclutamiento`,
+    `selección de personal`/`seleccion de personal`, `human resources`,
+    `hr business partner`, `hr generalist`). El chequeo de **título**
+    (`clasificar_decision()`) sigue usando la lista amplia sin cambios
+    (`DECISION_DESCARTAR_KEYWORDS + DECISION_RUBROS_EXCLUIDOS`, incluye
+    `reclutador`/`talento`/`recursos humanos`/`seleccion` sueltas — ahí el
+    riesgo de falso positivo es bajo, el título es corto y específico). El
+    chequeo de **descripción completa** en `ajustar_decision_por_descripcion()`
+    ahora usa SOLO la lista estricta nueva.
+  - *Qué se probó*: `py -3.14 -m py_compile` → compila. 10 casos unitarios
+    (título "Reclutador IT"/"Analista de selección" → DESCARTAR; Data/BI
+    real con disclaimer de Bumeran → ya NO descarta por "reclutador";
+    Data/BI real con "Empleos relacionados: Adecco Recursos Humanos" → ya NO
+    descarta; Data/BI real con "la empresa seleccionará..." → ya NO
+    descarta por "seleccion" suelta; Call Center/screening/selección de
+    personal reales → DESCARTAR; Data/BI limpio → POSTULAR; senior real →
+    DESCARTAR) → los 10 correctos. Reprocesados los 3 casos pedidos:
+    "Analista Sr. de Calidad" (página real) pasó de DESCARTAR (por las 4
+    palabras falsas) a **REVISAR**; "Analista de screening" sigue
+    **DESCARTAR** (cae por el título, "screening" literal, no depende de
+    este fix); oferta Data/BI simulada con el disclaimer real de Bumeran →
+    **POSTULAR** (antes hubiera dado DESCARTAR falso).
+  - **Hallazgo nuevo, NO corregido (fuera de alcance de este fix)**: al
+    sacar el ruido falso, "Analista Sr. de Calidad" quedó en REVISAR en vez
+    de DESCARTAR — el título usa la abreviatura **"Sr."**, no la palabra
+    completa "senior", y tanto el chequeo de título como el de seniority en
+    descripción (`_ALERTAS_SENIORIDAD`) buscan la palabra entera. Es un gap
+    real y separado, expuesto (no causado) por este fix. Pendiente decidir
+    si se agrega detección de abreviaturas ("sr.", "ssr", "sr ") a algún
+    lado de la cadena de seniority.
+  - *No se tocó*: postulación real, `DRY_RUN_POSTULACION`, `truststore`,
+    historial. No se corrió el buscador completo con este fix.
+
 - **Ofertas de RRHH/reclutamiento/Call Center ya no llegan a POSTULAR, ni
   aunque la descripción mencione palabras técnicas.**
   - *Por qué*: en el Excel `trabajos_2026-07-14_11-00-31.xlsx` apareció
