@@ -350,6 +350,21 @@ DECISION_DESCARTAR_KEYWORDS = [
     "inglés c1 excluyente", "ingles c1 excluyente",
 ]
 
+# Rubros excluidos: RRHH/reclutamiento/call center/atencion al cliente. Se
+# separa de DECISION_DESCARTAR_KEYWORDS (que ya tiene "call center"/"rrhh"/
+# "reclutador", no se duplican aca) para poder re-chequearla tambien contra
+# la DESCRIPCION completa en ajustar_decision_por_descripcion(), con motivo
+# propio -- antes "call center" solo se miraba en el titulo, y un aviso como
+# "Analista de screening" (titulo neutro, la descripcion revela Call Center)
+# se colaba y hasta subia a POSTULAR con "sql"/"erp"/"sistema" de la
+# descripcion (probablemente herramientas internas de RRHH, no del rol).
+DECISION_RUBROS_EXCLUIDOS = [
+    "screening", "reclutamiento", "talento", "people", "human resources",
+    "hr business partner", "hr generalist", "contact center",
+    "selección", "seleccion", "selección de personal", "seleccion de personal",
+    "recursos humanos",
+]
+
 # Umbral: con esta cantidad o mas de keywords FUERTES matcheadas, se marca
 # POSTULAR. Con 1 sola fuerte -> REVISAR. Con 0 fuertes (aunque haya
 # contexto) -> nunca POSTULAR, como mucho REVISAR.
@@ -1249,7 +1264,7 @@ def clasificar_decision(fila):
     texto = " ".join(str(fila.get(c, "") or "") for c in
                       ("titulo", "empresa", "ubicacion", "modalidad", "busqueda")).lower()
 
-    descartar_hits = [kw for kw in DECISION_DESCARTAR_KEYWORDS if kw in texto]
+    descartar_hits = [kw for kw in DECISION_DESCARTAR_KEYWORDS + DECISION_RUBROS_EXCLUIDOS if kw in texto]
     if descartar_hits:
         return "DESCARTAR", f"excluido por: {', '.join(descartar_hits)}", 0
 
@@ -1658,6 +1673,21 @@ def ajustar_decision_por_descripcion(fila):
     elif hits_seniority == 1 and decision == "POSTULAR":
         ajustes.append("bajado a REVISAR: la descripción pide algo de seniority que el título no dejaba ver")
         decision = "REVISAR"
+
+    # Rubro excluido (RRHH/reclutamiento/call center/etc.) que el TITULO no
+    # dejaba ver pero la descripcion si revela -- ej. "Analista de
+    # screening" con "Call Center" solo en el texto completo. Corre ANTES
+    # del bloque de "sube a POSTULAR por señal tecnica" de abajo para que
+    # nunca suba: si la descripcion tiene rubro excluido, sql/erp/sistema/
+    # datos ahi probablemente describen herramientas internas de la
+    # empresa, no el rol que se ofrece.
+    rubro_excluido_hits = [kw for kw in DECISION_DESCARTAR_KEYWORDS + DECISION_RUBROS_EXCLUIDOS
+                            if kw in texto]
+    if rubro_excluido_hits and decision != "DESCARTAR":
+        ajustes.append(
+            f"descartado por descripción: rubro excluido detectado ({', '.join(rubro_excluido_hits)})"
+        )
+        decision = "DESCARTAR"
 
     # Categoria secundaria (Supply Chain/Administrativo/etc.) que se quedo
     # en REVISAR en clasificar_decision() por no tener señal tecnica en el

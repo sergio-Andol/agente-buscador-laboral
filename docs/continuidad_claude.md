@@ -106,6 +106,48 @@ decida disparar la prueba de verdad.
 
 ## 6. Cambios recientes (más nuevo primero)
 
+- **Ofertas de RRHH/reclutamiento/Call Center ya no llegan a POSTULAR, ni
+  aunque la descripción mencione palabras técnicas.**
+  - *Por qué*: en el Excel `trabajos_2026-07-14_11-00-31.xlsx` apareció
+    "Analista de screening" (Computrabajo, categoría "Otro") como POSTULAR —
+    la descripción real decía "¿Tenés experiencia en **Call Center**...?" y
+    mencionaba "datos"/"sistema"/"erp" (casi seguro herramientas internas de
+    RRHH, no del rol), lo que alcanzaba para subir por el gate de categoría
+    secundaria del fix anterior. `"call center"` ya estaba en
+    `DECISION_DESCARTAR_KEYWORDS`, pero **ese chequeo solo corría contra el
+    título** — nunca se re-evaluaba contra la descripción completa, a
+    diferencia de la seniority que sí se re-chequea.
+  - *Fix aplicado, 2 partes*:
+    - **(A)** Nueva lista `DECISION_RUBROS_EXCLUIDOS` (screening,
+      reclutamiento, talento, people, human resources, hr business partner,
+      hr generalist, contact center, selección/seleccion, selección de
+      personal, recursos humanos — sin duplicar `call center`/`rrhh`/
+      `reclutador`, que ya estaban en `DECISION_DESCARTAR_KEYWORDS`). Se
+      suma a esa lista en el chequeo inicial de `clasificar_decision()`
+      (título).
+    - **(B)** `ajustar_decision_por_descripcion()` ahora re-chequea
+      `DECISION_DESCARTAR_KEYWORDS + DECISION_RUBROS_EXCLUIDOS` también
+      contra la **descripción completa** (no solo seniority como antes) —
+      nuevo bloque, corre justo después del chequeo de seniority y **antes**
+      del bloque que sube a POSTULAR por señal técnica, así que un rubro
+      excluido revelado solo en la descripción baja a DESCARTAR y bloquea
+      esa subida aunque haya sql/erp/sistema/datos.
+  - *Qué se probó*: `py -3.14 -m py_compile` → compila. 8 casos pedidos +
+    1 extra (título neutro tipo "Analista Junior", rubro excluido y señal
+    técnica los dos SOLO en la descripción) → los 9 correctos, incluido el
+    caso específico de la parte B (antes subía a POSTULAR con ERP/sistema/
+    datos, ahora baja a DESCARTAR por "call center" detectado en la
+    descripción). Reprocesada la fila real "Analista de screening" → antes
+    POSTULAR, ahora **DESCARTAR** ya en el paso 1 (el título tiene
+    "screening" literal, cae por la parte A antes de llegar a la
+    descripción).
+  - *Nota*: una fila DESCARTAR nunca entra a la hoja ACCIONES (solo
+    POSTULAR/REVISAR la usan) — no va a aparecer un `accion_sugerida =
+    "NO ACCIONAR"` explícito para estas ofertas, simplemente no están en esa
+    hoja. Quedan visibles solo en TODOS, como toda oferta DESCARTAR.
+  - *No se tocó*: postulación real, `DRY_RUN_POSTULACION`, `truststore`,
+    historial. No se corrió el buscador completo con este fix.
+
 - **Ajuste: "sistema"/"sistemas"/"datos" sueltos ya no alcanzan para subir
   una categoría secundaria a POSTULAR.**
   - *Por qué*: la corrida MANUAL del 14/07 (11:00, `trabajos_2026-07-14_11-00-31.xlsx`)
