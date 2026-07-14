@@ -106,6 +106,56 @@ decida disparar la prueba de verdad.
 
 ## 6. Cambios recientes (más nuevo primero)
 
+- **Fix: `clasificar_decision()` llegaba a POSTULAR solo con señales de
+  contexto (ubicación/modalidad/rubro), sin ningún skill técnico real.**
+  - *Por qué*: la corrida MANUAL del 13/07 (19:16) marcó "Administrativo de
+    Programa de Seguimiento de Pacientes" (Bumeran) como POSTULAR HOY. Al
+    diagnosticar la fila: `motivo_decision` mostraba "match fuerte: ai,
+    híbrido, capital federal, administrativo" — 4 matches contra
+    `DECISION_POSTULAR_MIN_MATCHES=2` de esa época. Ninguno de los 4 era un
+    skill técnico real. Peor: `"ai"` era un **falso positivo de substring**,
+    matcheaba dentro de **"Buenos Aires"** (bu-en-os-**ai**-res), no
+    inteligencia artificial. Sin ese bug, igual habría llegado a POSTULAR
+    solo con `híbrido` + `capital federal` + `administrativo` — puro
+    contexto, cero técnico.
+  - *Fix aplicado*: se separó `DECISION_POSTULAR_KEYWORDS` en dos listas —
+    `DECISION_POSTULAR_KEYWORDS_FUERTES` (skills/roles técnicos reales: sql,
+    python, power bi, data analyst, soporte it, mesa de ayuda, help desk, qa,
+    tester, testing, desarrollador/programador junior, developer, trainee,
+    junior, analista funcional, ai trainer, prompt evaluator, data
+    annotation, annotator, automation, back office sistemas, administrativo
+    sistemas) y `DECISION_POSTULAR_KEYWORDS_CONTEXTO` (híbrido, remoto, caba,
+    capital federal, buenos aires, administrativo — solo suman prioridad y
+    aparecen en el motivo, nunca deciden POSTULAR por sí solas). Nueva regla
+    en `clasificar_decision()`: POSTULAR requiere
+    `DECISION_POSTULAR_MIN_MATCHES_FUERTES=2` **fuertes**; con 1 fuerte o con
+    0 fuertes (aunque haya contexto) queda en REVISAR, nunca POSTULAR.
+  - **Bug de substring corregido**: nuevo helper `_matchea_keyword()` +
+    `DECISION_KEYWORDS_PALABRA_ENTERA = {"ai","ia","it","bi","qa","sql"}` —
+    esas 6 keywords cortas matchean SOLO como palabra entera (regex `\b`),
+    nunca como substring. Antes "ai" matcheaba "Buenos Aires", "it" matcheaba
+    "digital", etc.
+  - *Qué se probó*: `py -3.14 -m py_compile` → compila. Tests unitarios del
+    helper (`ai` en "buenos aires" → False; `ai` en "ai trainer" → True; `it`
+    en "digital" → False; `it` en "analista it" → True) → los 4 correctos.
+    Tests de `clasificar_decision()` sobre 4 títulos sintéticos (admin+
+    híbrido+CABA → REVISAR; Analista de Datos Junior → POSTULAR; Soporte IT
+    Junior Mesa de Ayuda → POSTULAR; Administrativo contable Senior →
+    DESCARTAR por "senior") → los 4 correctos. **Reprocesada la fila real**
+    de "Administrativo de Programa de Seguimiento de Pacientes" con sus datos
+    exactos del Excel → `decision_sugerida` pasó de POSTULAR a **REVISAR**
+    (motivo: solo contexto — híbrido, capital federal, buenos aires,
+    administrativo — 0 fuertes), por lo tanto ya no puede llegar a POSTULAR
+    HOY.
+  - *No se tocó*: postulación real, `DRY_RUN_POSTULACION`, `truststore`,
+    historial. No se corrió el buscador completo todavía con este fix (queda
+    pendiente antes de revisar las otras 2 ofertas POSTULAR HOY de esa
+    corrida).
+  - *Pendiente*: revisar si las otras 2 ofertas que dieron POSTULAR HOY en la
+    corrida del 13/07 19:16 ("Administrativo Contable" y "Administrativo/a
+    Contable") siguen en POSTULAR con la regla nueva, o si eran el mismo
+    patrón de falso positivo de contexto.
+
 - **Mejora de calidad de búsqueda: más foco IT/Data/Soporte/Junior, menos ruido
   industrial.** Motivo: la corrida MANUAL del 13/07 (ver entrada de validación abajo)
   trajo 134 avisos crudos (Bumeran 48 + Computrabajo 86) pero solo 2 nuevas, ambas

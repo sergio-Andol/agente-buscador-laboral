@@ -278,14 +278,32 @@ PERFIL_USUARIO_TEXTO = ""
 # disponible en ese punto (titulo, empresa, ubicacion, modalidad, busqueda),
 # no sobre la descripcion completa del aviso (esa ya se descarto antes,
 # solo se uso para calcular 'relevancia').
-DECISION_POSTULAR_KEYWORDS = [
-    "analista de datos", "data analyst", "sql", "power bi", "excel", "python",
-    "soporte it", "mesa de ayuda", "help desk", "analista funcional", "qa", "testing",
-    "desarrollador junior", "programador junior", "trainee", "junior",
-    "ai", "annotation", "annotator", "trainer", "prompt", "back office", "automation",
-    "remoto", "híbrido", "hibrido", "caba", "capital federal", "supply chain",
-    "abastecimiento", "compras", "inventario", "planificación", "planificacion",
-    "administrativo",
+# Keywords cortas y ambiguas: matchean SOLO como palabra entera (con \b),
+# nunca como substring. Sin esto, "ai" matcheaba dentro de "Buenos Aires",
+# "it" dentro de "digital", etc. -- ver _matchea_keyword() y el bug real
+# encontrado en "Administrativo de Programa de Seguimiento de Pacientes"
+# (13/07: llegó a POSTULAR HOY con "ai" matcheado dentro de "Aires").
+DECISION_KEYWORDS_PALABRA_ENTERA = {"ai", "ia", "it", "bi", "qa", "sql"}
+
+# Señales FUERTES: skills/roles tecnicos reales de tu perfil IT/Data/Soporte/
+# Junior. Solo estas cuentan para decidir POSTULAR.
+DECISION_POSTULAR_KEYWORDS_FUERTES = [
+    "sql", "python", "power bi", "data analyst", "analista de datos",
+    "soporte it", "mesa de ayuda", "help desk", "qa", "tester", "testing",
+    "desarrollador junior", "programador junior", "developer", "trainee",
+    "junior", "analista funcional", "ai trainer", "prompt evaluator",
+    "data annotation", "annotator", "automation", "back office sistemas",
+    "administrativo sistemas",
+]
+
+# Señales de CONTEXTO: ubicacion/modalidad/rubro. Ayudan a elegir entre
+# varias ofertas ya calificadas y aparecen en el motivo, pero NUNCA alcanzan
+# POSTULAR por si solas (ver clasificar_decision) -- antes "híbrido" +
+# "capital federal" + "administrativo" alcanzaban para POSTULAR sin ningun
+# skill tecnico real.
+DECISION_POSTULAR_KEYWORDS_CONTEXTO = [
+    "híbrido", "hibrido", "remoto", "caba", "capital federal",
+    "buenos aires", "administrativo",
 ]
 
 # Si aparece cualquiera de estas, DESCARTAR gana sobre POSTULAR (se chequea
@@ -300,9 +318,10 @@ DECISION_DESCARTAR_KEYWORDS = [
     "inglés c1 excluyente", "ingles c1 excluyente",
 ]
 
-# Umbral: con esta cantidad o mas de keywords de POSTULAR matcheadas, se
-# marca POSTULAR. Menos que eso pero al menos 1 match -> REVISAR.
-DECISION_POSTULAR_MIN_MATCHES = 2
+# Umbral: con esta cantidad o mas de keywords FUERTES matcheadas, se marca
+# POSTULAR. Con 1 sola fuerte -> REVISAR. Con 0 fuertes (aunque haya
+# contexto) -> nunca POSTULAR, como mucho REVISAR.
+DECISION_POSTULAR_MIN_MATCHES_FUERTES = 2
 
 # --- Filtros que Computrabajo aplica EN LA URL (mas confiable) ---
 # Ciudad: tal como aparece en la URL de Computrabajo. Ej: "capital-federal".
@@ -1176,10 +1195,25 @@ def _registrar_postulacion_log(registro):
 _ORDEN_DECISION = {"POSTULAR": 0, "REVISAR": 1, "DESCARTAR": 2}
 
 
+def _matchea_keyword(kw, texto):
+    """Matchea `kw` dentro de `texto` (ya en minusculas). Las keywords
+    cortas y ambiguas de DECISION_KEYWORDS_PALABRA_ENTERA (ai/ia/it/bi/qa/
+    sql) matchean SOLO como palabra entera (\b...\b) -- si no, "ai"
+    matchea dentro de "Buenos Aires", "it" dentro de "digital", etc. El
+    resto matchea como substring, igual que antes."""
+    if kw in DECISION_KEYWORDS_PALABRA_ENTERA:
+        return re.search(rf"\b{re.escape(kw)}\b", texto) is not None
+    return kw in texto
+
+
 def clasificar_decision(fila):
     """Capa de decision sobre un aviso que ya paso todos los filtros.
     No descarta nada: solo sugiere. Devuelve (decision_sugerida,
-    motivo_decision, prioridad)."""
+    motivo_decision, prioridad).
+
+    POSTULAR requiere señales FUERTES (skills/roles tecnicos reales), no
+    alcanza con contexto (ubicacion/modalidad/rubro) por si solo -- ver
+    DECISION_POSTULAR_KEYWORDS_FUERTES / _CONTEXTO mas arriba."""
     texto = " ".join(str(fila.get(c, "") or "") for c in
                       ("titulo", "empresa", "ubicacion", "modalidad", "busqueda")).lower()
 
@@ -1187,19 +1221,27 @@ def clasificar_decision(fila):
     if descartar_hits:
         return "DESCARTAR", f"excluido por: {', '.join(descartar_hits)}", 0
 
-    postular_hits = [kw for kw in DECISION_POSTULAR_KEYWORDS if kw in texto]
-    cant = len(postular_hits)
+    fuertes_hits = [kw for kw in DECISION_POSTULAR_KEYWORDS_FUERTES if _matchea_keyword(kw, texto)]
+    contexto_hits = [kw for kw in DECISION_POSTULAR_KEYWORDS_CONTEXTO if _matchea_keyword(kw, texto)]
+    cant_fuertes = len(fuertes_hits)
 
-    if cant >= DECISION_POSTULAR_MIN_MATCHES:
-        return "POSTULAR", f"match fuerte: {', '.join(postular_hits)}", cant
-    if cant >= 1:
-        return "REVISAR", f"match parcial: {', '.join(postular_hits)}", cant
-    return "REVISAR", "sin señales claras en título/ubicación, revisar manualmente", 0
+    partes_motivo = []
+    if fuertes_hits:
+        partes_motivo.append(f"match fuerte: {', '.join(fuertes_hits)}")
+    if contexto_hits:
+        partes_motivo.append(f"contexto: {', '.join(contexto_hits)}")
+    motivo = " | ".join(partes_motivo) if partes_motivo else \
+        "sin señales claras en título/ubicación, revisar manualmente"
+    prioridad = cant_fuertes * 2 + len(contexto_hits)
+
+    if cant_fuertes >= DECISION_POSTULAR_MIN_MATCHES_FUERTES:
+        return "POSTULAR", motivo, prioridad
+    return "REVISAR", motivo, prioridad
 
 
 # --- FICHA DE POSTULACION (solo para POSTULAR) ---------------------------
 # Todo por reglas simples, sin APIs ni modelos: se clasifica el aviso en
-# una categoria segun que palabras de DECISION_POSTULAR_KEYWORDS matchean,
+# una categoria segun que palabras de sus "keywords" propias matchean,
 # y cada categoria tiene sus textos canonicos (porque conviene, como
 # encaja el perfil, mensaje sugerido, accion recomendada).
 _FICHA_CATEGORIAS = {
