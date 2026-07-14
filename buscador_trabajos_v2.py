@@ -1914,10 +1914,27 @@ _DOMINIOS_POSTULACION_PROPIOS = ["bumeran.com.ar", "computrabajo.com"]
 # no duplicar la lista de deteccion.
 _POSTULACION_BLOQUEO_KW = tuple(set(_BUMERAN_BLOQUEO_KW) | set(kw.lower() for kw in BLOQUEOS_INDEED))
 
+# Puestos de gestion/liderazgo: fuera del perfil (individual contributor,
+# junior/trainee), sin importar que decision_sugerida haya dado POSTULAR
+# por otra razon. Solo se usan aca (gate del envio real), no en la capa de
+# decision_sugerida -- a proposito, para no tocar la clasificacion general
+# que ya esta probada, solo frenar el click final si aparecen.
+_PUESTOS_LIDERAZGO_EXCLUIDOS = [
+    "team leader", "team lead", "jefe", "jefa", "coordinador", "coordinadora",
+    "gerente", "responsable de", "responsable del", "responsable área",
+    "responsable area",
+]
+
 
 def _postulacion_es_segura(fila):
-    """Chequeo RAPIDO, sin abrir navegador: condiciones 1-4 del pedido
-    (accion_sugerida, decision_sugerida, alertas graves, dominio propio).
+    """Ultimo gate antes de un click real e irreversible -- NO confia solo
+    en que decision_sugerida/alertas_aviso no se hayan colado con un caso
+    raro en la capa de arriba (esa usa sus propias listas, con su propio
+    universo de palabras). Re-chequea directo contra titulo/empresa/
+    alertas con las listas mas recientes de exclusion (rubro
+    excluido, seniority completa Y abreviada, salario bajo, puestos de
+    liderazgo) ademas de las condiciones originales (accion_sugerida,
+    decision_sugerida, alertas graves clasicas, dominio propio).
     Devuelve (es_segura, motivo_si_no)."""
     if fila.get("accion_sugerida") != "POSTULAR HOY":
         return False, "accion_sugerida distinta de POSTULAR HOY"
@@ -1927,6 +1944,23 @@ def _postulacion_es_segura(fila):
     alertas = str(fila.get("alertas_aviso", "") or "").lower()
     if any(kw in alertas for kw in _ALERTAS_GRAVES):
         return False, "hay alertas graves en el aviso"
+    if "salario bajo" in alertas:
+        return False, "salario por debajo del mínimo aceptable"
+
+    texto_titulo = " ".join(str(fila.get(c, "") or "") for c in ("titulo", "empresa")).lower()
+    texto_completo = texto_titulo + " " + alertas
+
+    rubro_hits = [kw for kw in DECISION_DESCARTAR_KEYWORDS + DECISION_RUBROS_EXCLUIDOS
+                  if kw in texto_completo]
+    if rubro_hits:
+        return False, f"rubro excluido o alerta de descarte detectada: {', '.join(rubro_hits)}"
+
+    if _hits_seniority_abreviada(texto_completo):
+        return False, "seniority abreviada detectada (Sr./SSr/Semi Senior)"
+
+    liderazgo_hits = [kw for kw in _PUESTOS_LIDERAZGO_EXCLUIDOS if kw in texto_titulo]
+    if liderazgo_hits:
+        return False, f"puesto de liderazgo/gestión excluido: {', '.join(liderazgo_hits)}"
 
     link = str(fila.get("link", "") or "").lower()
     if not any(dominio in link for dominio in _DOMINIOS_POSTULACION_PROPIOS):

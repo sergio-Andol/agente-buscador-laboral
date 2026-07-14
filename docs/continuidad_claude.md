@@ -106,6 +106,45 @@ decida disparar la prueba de verdad.
 
 ## 6. Cambios recientes (más nuevo primero)
 
+- **Reforzado `_postulacion_es_segura()` (el gate final antes del click
+  real) antes de la primera prueba real supervisada.**
+  - *Por qué*: Sergio pidió activar `DRY_RUN_POSTULACION=False` para un
+    piloto real controlado, con 12 reglas obligatorias. Auditando el gate
+    existente contra esas reglas aparecieron gaps reales: `_ALERTAS_GRAVES`
+    (la única lista que chequeaba `_postulacion_es_segura`) es vieja, de
+    antes de toda la sesión de hoy, y no tenía: "salario bajo" (regla 7,
+    la alerta se generaba pero no bloqueaba nada), ninguno de los rubros
+    excluidos de hoy (call center, RRHH, screening, reclutamiento, ventas,
+    comercial puro — regla 8), seniority abreviada (Sr./SSr/Semi Senior —
+    regla 9), ni puestos de gestión (Team Leader/Jefe/Coordinador/Gerente/
+    Responsable — regla 10, no existía en ningún lado del código).
+  - *Fix aplicado*: `_postulacion_es_segura()` ya no confía solo en
+    `alertas_aviso` (que tiene su propio universo de palabras, más chico) —
+    ahora re-chequea directo contra título+empresa+alertas con
+    `DECISION_DESCARTAR_KEYWORDS + DECISION_RUBROS_EXCLUIDOS` (rubro
+    excluido), `_hits_seniority_abreviada()` (Sr./SSr/Semi Senior, el mismo
+    regex de hoy), `"salario bajo" in alertas`, y una lista nueva
+    `_PUESTOS_LIDERAZGO_EXCLUIDOS` (team leader, jefe/jefa, coordinador/a,
+    gerente, responsable de/del/área) — esta última **solo se usa en este
+    gate**, no en `decision_sugerida`/`clasificar_decision()`, a propósito,
+    para no tocar la clasificación general ya probada.
+  - *Qué se probó*: `py -3.14 -m py_compile` → compila. 14 casos contra
+    `_postulacion_es_segura()` directamente: 1 control positivo (oferta
+    limpia, Bumeran, POSTULAR HOY → sigue pasando) + 13 casos de exclusión
+    (salario bajo, call center, RRHH, screening, Sr abreviado, semi senior,
+    jefe, gerente, coordinador, team leader, responsable de, link externo,
+    accion_sugerida≠POSTULAR HOY) → los 14 correctos, cada uno bloqueado
+    por el motivo esperado.
+  - *No se tocó*: `DRY_RUN_POSTULACION` (sigue en `True` hasta que Sergio
+    decida el momento exacto), `MAX_POSTULACIONES_POR_CORRIDA` (sigue en
+    `1`), `truststore`, historial. No se corrió el buscador completo
+    todavía.
+  - *Pendiente inmediato*: Sergio decide cuándo pasar `DRY_RUN_POSTULACION`
+    a `False` y correr el piloto. La confirmación final en consola
+    (`"¿Enviar definitivamente esta postulación? [s/N]"`) la tiene que
+    contestar él mismo, en su propia terminal, mirando la oferta real —
+    ninguna sesión de Claude Code debe auto-responder ese prompt.
+
 - **Fix: seniority abreviada (Sr./SSr/Semi Senior/Semi-senior/Semi Sr.) no
   se detectaba, solo la palabra completa "senior".**
   - *Por qué*: al arreglar el falso positivo de "Analista Sr. de Calidad" en

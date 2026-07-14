@@ -11,3 +11,7 @@ debug_indeed_cloudflare.png
 debug_indeed_cloudflare.html
 buscador_trabajos_v2_BACKUP_antes_sync.py
 .env
+vistos_BACKUP_*.json
+historial_trabajos_BACKUP_*.xlsx
+*_BACKUP_*.json
+*_BACKUP_*.xlsx
