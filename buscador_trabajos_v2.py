@@ -385,6 +385,23 @@ DECISION_RUBROS_EXCLUIDOS_DESCRIPCION = [
     "human resources", "hr business partner", "hr generalist",
 ]
 
+# Rubros que NUNCA deben llegar a POSTULAR/POSTULAR HOY, sin importar que
+# categoria haya detectado detectar_categoria() ni cuantas keywords
+# FUERTES matchee -- son un CAP final, no un DESCARTAR inmediato: la
+# oferta puede seguir en REVISAR (visible, para que Sergio decida a mano),
+# solo se le saca la posibilidad de POSTULAR automatico. Pensado para
+# casos como "Analista Comercial E-commerce" (matcheaba FUERTES + contexto
+# y llegaba a POSTULAR sin ningun rol tecnico real). Un titulo IT/Data real
+# (ej. "Analista de Datos para e-commerce") no matchea ninguna de estas
+# palabras, asi que no se ve afectado.
+DECISION_RUBROS_BLOQUEADOS_POSTULAR = [
+    "administrativo", "contable", "contabilidad", "impuestos", "impositivo",
+    "tesorería", "tesoreria", "cobranzas", "cuentas a pagar", "cuentas a cobrar",
+    "pagos", "facturación", "facturacion", "sueldos", "liquidación", "liquidacion",
+    "comercial", "ventas", "asesor comercial", "inmobiliario",
+    "community manager", "marketing", "e-commerce comercial",
+]
+
 # Umbral: con esta cantidad o mas de keywords FUERTES matcheadas, se marca
 # POSTULAR. Con 1 sola fuerte -> REVISAR. Con 0 fuertes (aunque haya
 # contexto) -> nunca POSTULAR, como mucho REVISAR.
@@ -1295,6 +1312,36 @@ def _hits_seniority_abreviada(texto):
     return [label for label, pat in _PATRONES_SENIORITY_ABREVIADA if pat.search(texto)]
 
 
+# Cargos de liderazgo/jerarquia: nunca deben llegar a POSTULAR/POSTULAR
+# HOY, ni en decision_sugerida (aca) ni en el gate de envio real (ver
+# _PUESTOS_LIDERAZGO_EXCLUIDOS mas abajo, usado en _postulacion_es_segura
+# -- listas separadas a proposito, cada una en su capa). Todos con \b para
+# no matchear substrings: "responsable" NO debe matchear dentro de
+# "responsabilidades" (no lo hace ni con substring simple: las letras
+# despues de "respons-a-b" difieren -- "-le" vs "-ilidades" -- pero se usa
+# \b de todos modos como defensa explicita, igual que el resto). "lead"
+# con \b tampoco matchea dentro de "leadership" (no hay borde de palabra
+# entre "lead" y "ership").
+_PATRONES_LIDERAZGO_DECISION = [
+    ("team leader", re.compile(r"\bteam\s*leader\b")),
+    ("lead", re.compile(r"\blead\b")),
+    ("líder/lider", re.compile(r"\bl[ií]der\b")),
+    ("jefe/jefa/jefatura", re.compile(r"\bjefe\b|\bjefa\b|\bjefatura\b")),
+    ("coordinador/a", re.compile(r"\bcoordinador(a)?\b")),
+    ("gerente", re.compile(r"\bgerente\b")),
+    ("responsable", re.compile(r"\bresponsable\b")),
+    ("supervisor/a", re.compile(r"\bsupervisor(a)?\b")),
+    ("manager", re.compile(r"\bmanager\b")),
+    ("head", re.compile(r"\bhead\b")),
+]
+
+
+def _hits_liderazgo_decision(texto):
+    """Devuelve las etiquetas de _PATRONES_LIDERAZGO_DECISION que
+    matchean en `texto` (ya en minusculas)."""
+    return [label for label, pat in _PATRONES_LIDERAZGO_DECISION if pat.search(texto)]
+
+
 def clasificar_decision(fila):
     """Capa de decision sobre un aviso que ya paso todos los filtros.
     No descarta nada: solo sugiere. Devuelve (decision_sugerida,
@@ -1308,12 +1355,20 @@ def clasificar_decision(fila):
 
     descartar_hits = [kw for kw in DECISION_DESCARTAR_KEYWORDS + DECISION_RUBROS_EXCLUIDOS if kw in texto]
     descartar_hits += _hits_seniority_abreviada(texto)
+    descartar_hits += _hits_liderazgo_decision(texto)
     if descartar_hits:
         return "DESCARTAR", f"excluido por: {', '.join(descartar_hits)}", 0
 
     fuertes_hits = [kw for kw in DECISION_POSTULAR_KEYWORDS_FUERTES if _matchea_keyword(kw, texto)]
     contexto_hits = [kw for kw in DECISION_POSTULAR_KEYWORDS_CONTEXTO if _matchea_keyword(kw, texto)]
     cant_fuertes = len(fuertes_hits)
+
+    # Cap final: si aparece un rubro bloqueado (administrativo/contable/
+    # comercial/inmobiliario/community manager/etc.), esta oferta no puede
+    # llegar a POSTULAR sin importar que categoria o cuantas FUERTES
+    # matchee -- ver DECISION_RUBROS_BLOQUEADOS_POSTULAR. No es un
+    # DESCARTAR (sigue visible en REVISAR para que Sergio decida a mano).
+    rubro_bloqueado_hits = [kw for kw in DECISION_RUBROS_BLOQUEADOS_POSTULAR if kw in texto]
 
     partes_motivo = []
     if fuertes_hits:
@@ -1330,6 +1385,10 @@ def clasificar_decision(fila):
         motivo = " | ".join(partes_motivo) if partes_motivo else \
             "sin señales claras en título/ubicación, revisar manualmente"
         if cant_fuertes >= DECISION_POSTULAR_MIN_MATCHES_FUERTES:
+            if rubro_bloqueado_hits:
+                motivo += (f" | rubro bloqueado para POSTULAR automático "
+                           f"({', '.join(rubro_bloqueado_hits)}) -> REVISAR")
+                return "REVISAR", motivo, prioridad
             return "POSTULAR", motivo, prioridad
         return "REVISAR", motivo, prioridad
 
@@ -1348,6 +1407,11 @@ def clasificar_decision(fila):
         partes_motivo.append(f"señal técnica en categoría secundaria ({categoria}): {', '.join(señal_tecnica)}")
         if señal_contexto_sec:
             partes_motivo.append(f"contexto secundario: {', '.join(señal_contexto_sec)}")
+        if rubro_bloqueado_hits:
+            partes_motivo.append(
+                f"rubro bloqueado para POSTULAR automático ({', '.join(rubro_bloqueado_hits)}) -> REVISAR"
+            )
+            return "REVISAR", " | ".join(partes_motivo), prioridad
         return "POSTULAR", " | ".join(partes_motivo), prioridad + len(señal_tecnica)
 
     # "sistema"/"sistemas"/"datos" sueltos NO alcanzan por si solos -- solo
@@ -1509,9 +1573,19 @@ def generar_ficha_postulacion(fila):
 # Etiqueta informativa (que tipo de puesto es), separada de la capa de
 # decision_sugerida/prioridad -- no las toca ni las usa para decidir nada.
 CATEGORIAS_KEYWORDS = {
-    "Data / BI": ["data", "datos", "analista de datos", "data analyst", "sql",
-                  "power bi", "bi", "reporting", "dashboard", "excel avanzado",
-                  "python", "analytics"],
+    # "datos"/"data" sueltas sacadas a proposito: son demasiado genericas
+    # (cualquier rubro menciona "carga de datos", "base de datos de
+    # clientes", etc.) y hacian que ofertas administrativas/comerciales/
+    # inmobiliarias/community manager cayeran en Data/BI solo por eso.
+    # Se dejan frases especificas que si son senal real de un rol de
+    # datos/BI. "python" tambien se acoto a la frase, "python" bare vive
+    # en la categoria Desarrollo.
+    "Data / BI": ["analista de datos", "análisis de datos", "analisis de datos",
+                  "data analyst", "business intelligence", "power bi", "bi",
+                  "sql", "dashboard", "dashboards", "base de datos",
+                  "bases de datos", "analytics", "data visualization",
+                  "visualización de datos", "visualizacion de datos", "etl",
+                  "python para datos", "reporting", "kpi"],
     "Soporte IT": ["soporte it", "soporte técnico", "soporte tecnico", "mesa de ayuda",
                    "help desk", "helpdesk", "service desk", "técnico en sistemas",
                    "tecnico en sistemas", "incidentes", "tickets", "redes",
@@ -1543,36 +1617,49 @@ CATEGORIAS_KEYWORDS = {
 
 CATEGORIA_OTRO = "Otro"
 
-# Orden de desempate cuando 2+ categorias matchean la misma cantidad de
-# keywords: la primera de esta lista gana.
-_ORDEN_CATEGORIAS_DETECCION = [
-    "Data / BI", "Desarrollo", "QA / Testing", "Analista Funcional",
-    "Soporte IT", "Supply Chain", "Administrativo / Procesos",
-    "Técnico / Producción",
-]
+# Categoria cuando 2+ categorias empatan en cantidad de keywords: antes se
+# resolvia el empate a favor de la primera de una lista fija (siempre
+# "Data / BI"), lo que categorizaba mal ofertas administrativas/contables
+# que por casualidad mencionaban "datos" tanto como "administrativo". Con
+# un empate real no hay forma confiable de elegir una sola -- se marca
+# "Ambiguo" y se trata igual que una categoria secundaria (exige señal
+# tecnica real para POSTULAR, nunca es categoria principal).
+CATEGORIA_AMBIGUO = "Ambiguo"
 
 
 def detectar_categoria(fila):
     """Etiqueta 'que tipo de puesto es' en base a titulo/empresa/ubicacion/
     modalidad/busqueda + descripcion_resumen/alertas_aviso si existen
     (pueden venir vacios si ANALIZAR_DESCRIPCION_DETALLE=False). Gana la
-    categoria con mas keywords matcheadas; empate lo resuelve
-    _ORDEN_CATEGORIAS_DETECCION. Sin matches -> 'Otro'. Reglas simples,
-    no toca decision_sugerida ni prioridad."""
+    categoria con mas keywords matcheadas. Si 2+ categorias empatan en el
+    maximo, devuelve CATEGORIA_AMBIGUO (nunca se elige una por estar
+    primera en una lista). Sin matches -> 'Otro'. Usa _matchea_keyword()
+    para las keywords cortas/ambiguas (bi/ai/it/qa/sql) -- antes comparaba
+    substring crudo y "bi" matcheaba dentro de "inmobiliario", "ai" dentro
+    de "Buenos Aires", etc. Reglas simples, no toca decision_sugerida ni
+    prioridad."""
     campos = ("titulo", "empresa", "ubicacion", "modalidad", "busqueda",
               "descripcion_resumen", "alertas_aviso")
     texto = " ".join(str(fila.get(c, "") or "") for c in campos).lower()
 
-    conteos = {nombre: sum(1 for kw in kws if kw in texto)
+    conteos = {nombre: sum(1 for kw in kws if _matchea_keyword(kw, texto))
                for nombre, kws in CATEGORIAS_KEYWORDS.items()}
     mejor_cant = max(conteos.values(), default=0)
     if mejor_cant == 0:
         return CATEGORIA_OTRO
 
-    for nombre in _ORDEN_CATEGORIAS_DETECCION:
-        if conteos.get(nombre, 0) == mejor_cant:
-            return nombre
-    return CATEGORIA_OTRO
+    ganadores = [nombre for nombre, cant in conteos.items() if cant == mejor_cant]
+    if len(ganadores) > 1:
+        # Empate entre 2+ categorias PRINCIPALES (ej. "Analista Funcional"
+        # vs "Soporte IT" por "tickets") no es peligroso: clasificar_decision()
+        # las trata exactamente igual (categoria principal), no importa cual
+        # se elija. Solo es peligroso el empate que cruza una principal con
+        # una secundaria/administrativa (ahi si es Ambiguo, para no
+        # favorecer la principal por casualidad de orden).
+        if all(g in CATEGORIAS_PRINCIPALES_IT for g in ganadores):
+            return ganadores[0]
+        return CATEGORIA_AMBIGUO
+    return ganadores[0]
 
 
 # --- ANALISIS DE DESCRIPCION (detalle del aviso) --------------------------
@@ -1718,6 +1805,18 @@ def ajustar_decision_por_descripcion(fila):
         ajustes.append("bajado a REVISAR: la descripción pide algo de seniority que el título no dejaba ver")
         decision = "REVISAR"
 
+    # Cargo de liderazgo/jerarquia que el TITULO no dejaba ver pero la
+    # descripcion si revela (ej. "buscamos un Team Leader para..."). Mismos
+    # patrones con \b que en clasificar_decision(), ver
+    # _PATRONES_LIDERAZGO_DECISION.
+    hits_liderazgo_desc = _hits_liderazgo_decision(texto)
+    if hits_liderazgo_desc and decision != "DESCARTAR":
+        ajustes.append(
+            f"bajado a DESCARTAR: cargo de liderazgo/jerarquía detectado en la descripción "
+            f"({', '.join(hits_liderazgo_desc)})"
+        )
+        decision = "DESCARTAR"
+
     # Rubro excluido (RRHH/reclutamiento/call center/etc.) que el TITULO no
     # dejaba ver pero la descripcion si revela -- ej. "Analista de
     # screening" con "Call Center" solo en el texto completo. Corre ANTES
@@ -1751,6 +1850,22 @@ def ajustar_decision_por_descripcion(fila):
             ajustes.append(
                 "subido a POSTULAR: la descripción trae señal técnica real "
                 f"({', '.join(señal_tecnica_desc)}) para esta categoría secundaria"
+            )
+
+    # Mismo cap de DECISION_RUBROS_BLOQUEADOS_POSTULAR que en
+    # clasificar_decision(), pero re-chequeado con la descripcion completa
+    # -- por si el titulo no lo mostraba pero el aviso real si es
+    # administrativo/contable/comercial/etc. Nunca DESCARTA, solo evita que
+    # llegue a POSTULAR (cap conservador: en el peor caso queda en REVISAR
+    # de mas, visible para que Sergio la vea a mano -- no en un descarte ni
+    # un envio silencioso).
+    if decision == "POSTULAR":
+        rubro_bloqueado_desc = [kw for kw in DECISION_RUBROS_BLOQUEADOS_POSTULAR if kw in texto]
+        if rubro_bloqueado_desc:
+            decision = "REVISAR"
+            ajustes.append(
+                "bajado a REVISAR: rubro bloqueado para POSTULAR automático detectado en la "
+                f"descripción ({', '.join(rubro_bloqueado_desc)})"
             )
 
     if hits_skills:

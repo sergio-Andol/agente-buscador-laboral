@@ -106,6 +106,82 @@ decida disparar la prueba de verdad.
 
 ## 6. Cambios recientes (más nuevo primero)
 
+- **Fix grande del clasificador: `detectar_categoria()`/`clasificar_decision()`
+  ya no categorizan ofertas administrativas/comerciales/inmobiliarias/
+  community manager/liderazgo como Data/BI ni las dejan llegar a POSTULAR.**
+  - *Por qué*: al diseñar la arquitectura de niveles de autonomía, Sergio
+    reportó 5 ofertas mal categorizadas: "Empleado administrativo",
+    "Administrativo Contable" → Data/BI → POSTULAR; "asesor/a inmobiliario",
+    "Community Manager" → Data/BI; "Administrativo Créditos Prendarios" →
+    Data/BI. Diagnóstico con datos reales: (1) **bug de substring** —
+    `detectar_categoria()` nunca usaba `_matchea_keyword()`, comparaba texto
+    crudo: `"bi"` matcheaba dentro de "in**mo-bi**-liario"; (2) `"datos"`/
+    `"data"` sueltas en `CATEGORIAS_KEYWORDS["Data / BI"]` son demasiado
+    genéricas (cualquier rubro menciona "carga de datos"); (3) el desempate
+    de categorías empatadas siempre favorecía "Data / BI" por ser la
+    primera de una lista fija.
+  - **Fix 1**: `detectar_categoria()` ahora usa `_matchea_keyword()` (igual
+    que la capa de decisión) para las keywords cortas (bi/ai/it/qa/sql).
+  - **Fix 2**: `CATEGORIAS_KEYWORDS["Data / BI"]` reescrita sin "datos"/
+    "data" sueltas — solo frases específicas reales (analista de datos,
+    data analyst, business intelligence, power bi, sql, dashboard(s), base
+    de datos, analytics, data visualization, etl, python para datos,
+    reporting, kpi).
+  - **Fix 3**: nueva `CATEGORIA_AMBIGUO = "Ambiguo"` — si 2+ categorías
+    empatan en el máximo, ya no gana la primera de una lista: si **todas**
+    las empatadas son principales (Data/BI, Soporte IT, QA/Testing,
+    Desarrollo, Analista Funcional) da igual cuál se elija, se toma
+    cualquiera; si el empate **cruza** una principal con una secundaria/
+    administrativa, se marca `Ambiguo` (tratado como categoría secundaria,
+    exige señal técnica real).
+  - **Fix 4**: nueva `DECISION_RUBROS_BLOQUEADOS_POSTULAR` (administrativo,
+    contable, contabilidad, impuestos, tesorería, cobranzas, cuentas a
+    pagar/cobrar, pagos, facturación, sueldos, liquidación, comercial,
+    ventas, asesor comercial, inmobiliario, community manager, marketing,
+    e-commerce comercial) — un **cap final**, no un descarte inmediato: si
+    aparece en título o descripción, la oferta nunca llega a POSTULAR (cae
+    a REVISAR), sin importar categoría ni cuántas keywords fuertes tenga.
+    Aplicado tanto en `clasificar_decision()` (ambos caminos: categoría
+    principal y categoría secundaria) como en
+    `ajustar_decision_por_descripcion()` (re-chequeo contra la descripción
+    completa).
+  - **Fix 5 (pedido en la misma sesión, tras detectar el gap yo mismo)**:
+    cargos de liderazgo/jerarquía (Team Leader, Lead, Líder, Jefe/Jefa/
+    Jefatura, Coordinador/a, Gerente, Responsable, Supervisor/a, Manager,
+    Head) ahora también **descartan en `decision_sugerida`**, no solo en
+    el gate de envío real de la vez pasada. Nuevos
+    `_PATRONES_LIDERAZGO_DECISION` (regex con `\b`, todas las entradas
+    protegidas contra substring — "responsable" no matchea
+    "responsabilidades", "lead" no matchea "leadership"), chequeados en
+    título (`clasificar_decision()`, DESCARTAR inmediato, mismo mecanismo
+    que la seniority abreviada) y en descripción completa
+    (`ajustar_decision_por_descripcion()`, baja a DESCARTAR si aparece).
+  - **Corrección durante el propio desarrollo**: la primera versión del
+    fix de empates (Fix 3) también convertía en "Ambiguo" los empates
+    entre 2 categorías **principales** entre sí (ej. "Analista Funcional"
+    vs "Soporte IT", ambas con 1 match por "tickets") — innecesariamente
+    conservador, bajaba a REVISAR ofertas legítimas. Corregido: el empate
+    solo es "Ambiguo" si cruza principal con no-principal; entre
+    principales da igual cuál gane.
+  - *Qué se probó*: `py -3.14 -m py_compile` → compila. 19 casos unitarios
+    sin fallos (liderazgo x8, rubros bloqueados x6, categorías x2 más, y
+    los 3 POSTULAR legítimos que deben seguir funcionando). Reprocesadas
+    las 9 filas reales problemáticas del Excel
+    `trabajos_2026-07-14_19-27-57.xlsx` → ninguna llega a POSTULAR excepto
+    la única técnicamente legítima (Analista técnico de Soporte de
+    Aplicaciones con PowerBuilder+PL/SQL). Revisión final de consistencia:
+    11 títulos que NUNCA deben POSTULAR (administrativos, comercial,
+    inmobiliario, community manager, Team Leader/Jefe/Gerente/Coordinador/
+    Responsable/Lead) → ninguno llegó a POSTULAR; 5 títulos que SÍ deben
+    poder POSTULAR (Data/BI, Soporte IT, QA Tester, Analista Funcional, con
+    señales reales) → los 5 llegaron a POSTULAR correctamente.
+  - *No se tocó*: postulación real, `DRY_RUN_POSTULACION`, `truststore`,
+    historial. No se corrió el buscador completo con este fix.
+  - *Pendiente*: el score de confianza numérico (`confianza_auto`,
+    `auto_postulable`, columnas nuevas del Excel) para los Niveles 3/4 de
+    autonomía sigue sin implementar — se acordó explícitamente empezar por
+    este fix del clasificador (base de todo lo demás) antes de tocar eso.
+
 - **Reforzado `_postulacion_es_segura()` (el gate final antes del click
   real) antes de la primera prueba real supervisada.**
   - *Por qué*: Sergio pidió activar `DRY_RUN_POSTULACION=False` para un
