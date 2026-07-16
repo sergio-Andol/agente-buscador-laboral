@@ -15,3 +15,4 @@ vistos_BACKUP_*.json
 historial_trabajos_BACKUP_*.xlsx
 *_BACKUP_*.json
 *_BACKUP_*.xlsx
+*.patch

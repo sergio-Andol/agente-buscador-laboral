@@ -106,6 +106,115 @@ decida disparar la prueba de verdad.
 
 ## 6. Cambios recientes (más nuevo primero)
 
+- **2 ajustes finos tras revisar `trabajos_2026-07-15_20-45-08.xlsx`
+  (POSTULAR: 0, REVISAR: 3, DESCARTAR: 24 — muy buen resultado general).**
+  - *Ajuste 1*: "Técnico instalador De baterias" quedaba en REVISAR
+    MANUALMENTE en vez de DESCARTAR. Nueva lista `DECISION_RUBRO_TECNICO_NO_IT`
+    (técnico instalador, instalador, batería(s), producción, electricista,
+    mecánico, electromecánico, mantenimiento) — DESCARTAR directo en título
+    y en descripción, sin afectar "soporte técnico"/"técnico IT" reales (no
+    comparten esas palabras). De paso se sacó "técnico"/"tecnico" sueltos
+    de `CATEGORIAS_KEYWORDS["Técnico / Producción"]` — eran tan genéricos
+    que empataban con "Soporte IT" en títulos legítimos como "Soporte
+    técnico nivel 1" (ambas categorías con 1 match → Ambiguo, perdía la
+    categoría principal real). El resto de los términos de esa categoría ya
+    queda cubierto igual por la lista nueva de DESCARTAR directo.
+  - *Ajuste 2*: "Community Manager" daba DESCARTAR correcto pero con motivo
+    "excluido por: manager" (liderazgo) en vez de rubro — confuso para el
+    reporte diario. Se movieron `community manager`/`marketing`/`redes
+    sociales`/`social media`/`contenido`/`tiktok`/`tik tok` a
+    `DECISION_RUBROS_EXCLUIDOS` (antes solo estaban en el cap
+    `DECISION_RUBROS_BLOQUEADOS_POSTULAR`, más débil) y se reordenó
+    `clasificar_decision()`/`ajustar_decision_por_descripcion()` en 2
+    niveles: rubro excluido se chequea PRIMERO (return inmediato), recién
+    después seniority/liderazgo — así un título que matchea ambos motivos
+    reporta la razón real (rubro), no una casualidad de qué lista se
+    revisó primero.
+  - **Gap extra encontrado al testear**: "Soporte técnico nivel 1" no
+    tenía ningún match fuerte (`DECISION_POSTULAR_KEYWORDS_FUERTES` solo
+    tenía "soporte it", no "soporte técnico"/"soporte tecnico") — agregadas,
+    más "nivel 1"/"n1" (terminología estándar de niveles de soporte).
+  - *Qué se probó*: `py -3.14 -m py_compile` → compila. 9 casos pedidos
+    (instalador de baterías/eléctrico → DESCARTAR; mantenimiento industrial
+    → DESCARTAR; Técnico soporte IT Junior → POSTULAR; Soporte técnico
+    nivel 1 → POSTULAR; Community Manager TikTok → DESCARTAR por rubro;
+    Social Media Manager → DESCARTAR por rubro; QA Tester Junior →
+    POSTULAR; Data Junior SQL+PowerBI → POSTULAR) → los 9 correctos.
+    Regresión de 21 tests de sesiones anteriores → 0 fallos. Reprocesadas
+    las 4 filas reales relevantes del Excel: "Empleado administrativo" y
+    "asesor/a inmobiliario" sin cambios (seguían REVISAR, correcto);
+    "Tecnico instalador De baterias" pasó de REVISAR MANUALMENTE a
+    **DESCARTAR** ("excluido por: tecnico instalador, instalador, bateria,
+    baterias"); "Community Manager especialista en Tik Tok" sigue
+    DESCARTAR pero ahora con motivo correcto ("excluido por: community
+    manager, tik tok", ya no "manager").
+  - *No se tocó*: postulación real, `DRY_RUN_POSTULACION`, `truststore`,
+    historial. No se corrió el buscador completo.
+
+- **"El título manda": la búsqueda ya no cambia la categoría, y nueva
+  lógica administrativo neutro vs con puente técnico.**
+  - *Por qué*: Sergio pidió que el título tenga prioridad fuerte sobre
+    búsqueda/descripción para decidir POSTULAR. Diagnóstico con 10 tests
+    reales contra el código de la sesión anterior: 5/10 ya funcionaban
+    (los caps de rubro bloqueado de la sesión pasada ya evitaban el
+    POSTULAR indebido), pero: (1) `categoria_detectada` seguía mostrando
+    "Data / BI" para "Analista de cobranzas" por contaminación de la
+    columna `busqueda` ("analista de datos"); (2) "Analista de Datos
+    E-commerce" + SQL/Power BI en la descripción se quedaba en REVISAR
+    (solo 1 fuerte en el título, sin mecanismo de rescate para categorías
+    *principales*, a diferencia de las secundarias); (3) "Analista de
+    Soporte de Aplicaciones" + tickets/incidencias tampoco subía (esas
+    palabras no estaban en la lista de señal técnica secundaria).
+  - **Fix A — búsqueda fuera de la decisión**: `detectar_categoria()` y
+    `clasificar_decision()` ya no incluyen la columna `busqueda` en el
+    texto que analizan (solo título/empresa/ubicación/modalidad) —
+    `busqueda` es el término que *encontró* el aviso, no contenido real.
+  - **Fix B — rescate para categorías principales**: nuevo marcador
+    estable "categoría principal con señales insuficientes en título" +
+    bloque en `ajustar_decision_por_descripcion()` que suma FUERTES de la
+    descripción a los del título para completar el umbral de 2 (ej.
+    "analista de datos" en título + "sql"/"power bi" en descripción = 3,
+    sube a POSTULAR). Simétrico al mecanismo que ya existía para
+    categorías secundarias.
+  - **Fix C — `tickets`/`incidencias`/`soporte a usuarios` agregadas a
+    `DECISION_SENAL_TECNICA_SECUNDARIA`** (antes solo estaban señales tipo
+    SQL/Power BI/ERP/reporting, nada de soporte técnico).
+  - **Fix D — "administrativo" ya no es veto absoluto, se separó en 3
+    casos** (a pedido explícito de Sergio, tras plantear la tensión entre
+    "Administrativo Sistemas" debe poder rescatarse vs "Empleado
+    administrativo" no debe volver a POSTULAR con solo ERP):
+    - **Bloqueado** (`_ADMINISTRATIVO_BLOQUEADO`): "administrativo
+      contable/comercial/cobranzas/facturación/pagos/tesorería/sueldos/
+      ventas/inmobiliario/rrhh" — mayormente redundante con
+      `DECISION_RUBROS_BLOQUEADOS_POSTULAR` (que también perdió el
+      "administrativo" suelto, quedó con "contable"/"comercial"/etc.
+      sueltos), pero documentado explícito.
+    - **Puente técnico** (`_ADMINISTRATIVO_PUENTE_TECNICO`): "administrativo
+      sistemas/de sistemas/soporte/soporte técnico/back office sistemas/
+      procesos/de procesos/operaciones/data entry sistemas" — no bloquea,
+      y habilita la lista NORMAL de señal técnica (`DECISION_SENAL_TECNICA_SECUNDARIA`,
+      incluye ERP) para decidir POSTULAR.
+    - **Neutro** (ninguna de las dos, ej. "Empleado administrativo"): exige
+      la lista MÁS ESTRICTA `_SENAL_TECNICA_ADMINISTRATIVO_FUERTE` (sql,
+      power bi, reporting, dashboards, kpi, macros, automatización,
+      tickets, incidencias, soporte a usuarios, implementación de
+      sistemas, base de datos — **sin ERP suelto**, que es justo lo que
+      dejaba pasar el bug original).
+  - *Qué se probó*: `py -3.14 -m py_compile` → compila. Los 10 tests
+    pedidos (cobranzas+búsqueda contaminante+ERP; administrativo
+    contable+ERP; inmobiliario+reporting; community manager+métricas;
+    comercial e-commerce+dashboard; Datos e-commerce+SQL+PowerBI; Procesos+
+    PowerBI+KPI; Soporte de Aplicaciones+tickets/incidencias; Soporte IT
+    Junior+tickets; QA Tester Junior) → los 10 correctos. Verificada la
+    tensión resuelta explícitamente: "Empleado administrativo"+ERP solo →
+    sigue REVISAR (no postula); "Administrativo Sistemas"+tickets/soporte
+    → POSTULAR; "Administrativo Sistemas"+ERP solo → también POSTULAR
+    (puente habilita la lista normal). Regresión completa de 21 tests de
+    sesiones anteriores → 0 fallos.
+  - *No se tocó*: postulación real, `DRY_RUN_POSTULACION`, `truststore`,
+    historial, `_postulacion_es_segura()` (gate de envío real, capa
+    separada, no tocada hoy). No se corrió el buscador completo.
+
 - **Fix grande del clasificador: `detectar_categoria()`/`clasificar_decision()`
   ya no categorizan ofertas administrativas/comerciales/inmobiliarias/
   community manager/liderazgo como Data/BI ni las dejan llegar a POSTULAR.**

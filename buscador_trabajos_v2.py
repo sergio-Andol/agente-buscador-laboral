@@ -289,7 +289,8 @@ DECISION_KEYWORDS_PALABRA_ENTERA = {"ai", "ia", "it", "bi", "qa", "sql"}
 # Junior. Solo estas cuentan para decidir POSTULAR.
 DECISION_POSTULAR_KEYWORDS_FUERTES = [
     "sql", "python", "power bi", "data analyst", "analista de datos",
-    "soporte it", "mesa de ayuda", "help desk", "qa", "tester", "testing",
+    "soporte it", "soporte técnico", "soporte tecnico", "mesa de ayuda",
+    "help desk", "qa", "tester", "testing", "nivel 1", "n1",
     "desarrollador junior", "programador junior", "developer", "trainee",
     "junior", "analista funcional", "ai trainer", "prompt evaluator",
     "data annotation", "annotator", "automation", "back office sistemas",
@@ -329,6 +330,7 @@ DECISION_SENAL_TECNICA_SECUNDARIA = [
     "dashboard", "análisis de datos", "analisis de datos", "erp",
     "automatización", "automatizacion", "automation", "python",
     "base de datos", "bases de datos", "macros", "indicadores", "kpi",
+    "tickets", "incidencias", "soporte a usuarios",
 ]
 
 # Señales debiles/genericas para categoria secundaria: "sistema"/"sistemas"
@@ -363,6 +365,27 @@ DECISION_RUBROS_EXCLUIDOS = [
     "hr business partner", "hr generalist", "contact center",
     "selección", "seleccion", "selección de personal", "seleccion de personal",
     "recursos humanos",
+    # Marketing/redes sociales: antes "Community Manager" caia por el
+    # chequeo de liderazgo ("manager"), con motivo enganoso para el reporte
+    # diario. Al estar aca (chequeado ANTES que liderazgo en
+    # clasificar_decision()), el motivo queda "rubro excluido" en vez de
+    # "cargo de liderazgo", que es lo que realmente aplica.
+    "community manager", "marketing", "redes sociales", "social media",
+    "contenido", "tiktok", "tik tok",
+]
+
+# Rubro tecnico/produccion FUERA del objetivo IT/Data/Soporte (electricidad,
+# instalaciones, mecanica, produccion de planta): DESCARTAR directo, igual
+# que DECISION_RUBROS_EXCLUIDOS. No incluye "técnico" ni "soporte" sueltos
+# a proposito -- "Técnico soporte IT Junior"/"Soporte técnico nivel 1" no
+# deben verse afectados, y ninguno de estos terminos aparece en un titulo
+# de soporte IT real.
+DECISION_RUBRO_TECNICO_NO_IT = [
+    "técnico instalador", "tecnico instalador", "instalador",
+    "batería", "baterías", "bateria", "baterias",
+    "producción", "produccion", "electricista",
+    "mecánico", "mecanico", "electromecánico", "electromecanico",
+    "mantenimiento",
 ]
 
 # Version ESTRICTA de rubro excluido, solo para re-chequear contra la
@@ -383,6 +406,7 @@ DECISION_RUBROS_EXCLUIDOS_DESCRIPCION = [
     "call center", "contact center", "screening", "reclutamiento",
     "selección de personal", "seleccion de personal",
     "human resources", "hr business partner", "hr generalist",
+    "community manager", "redes sociales", "social media",
 ]
 
 # Rubros que NUNCA deben llegar a POSTULAR/POSTULAR HOY, sin importar que
@@ -394,12 +418,54 @@ DECISION_RUBROS_EXCLUIDOS_DESCRIPCION = [
 # y llegaba a POSTULAR sin ningun rol tecnico real). Un titulo IT/Data real
 # (ej. "Analista de Datos para e-commerce") no matchea ninguna de estas
 # palabras, asi que no se ve afectado.
+#
+# "administrativo" SUELTO se saco a proposito (ver _ADMINISTRATIVO_BLOQUEADO/
+# _ADMINISTRATIVO_PUENTE_TECNICO mas abajo): no es un veto absoluto, depende
+# de que acompaña al titulo -- "Administrativo Sistemas" debe poder
+# rescatarse, "Administrativo Contable" no.
 DECISION_RUBROS_BLOQUEADOS_POSTULAR = [
-    "administrativo", "contable", "contabilidad", "impuestos", "impositivo",
+    "contable", "contabilidad", "impuestos", "impositivo",
     "tesorería", "tesoreria", "cobranzas", "cuentas a pagar", "cuentas a cobrar",
     "pagos", "facturación", "facturacion", "sueldos", "liquidación", "liquidacion",
-    "comercial", "ventas", "asesor comercial", "inmobiliario",
-    "community manager", "marketing", "e-commerce comercial",
+    "comercial", "ventas", "asesor comercial", "ejecutivo comercial",
+    "representante comercial", "inmobiliario", "e-commerce comercial",
+]
+
+# "administrativo" + rubro fuera de objetivo: bloquea igual que
+# DECISION_RUBROS_BLOQUEADOS_POSTULAR (mayormente redundante con los
+# terminos de arriba -- "administrativo contable" ya cae por "contable"
+# solo -- pero se listan explicitas para que quede documentado el criterio).
+_ADMINISTRATIVO_BLOQUEADO = [
+    "administrativo contable", "administrativo comercial", "administrativo cobranzas",
+    "administrativo facturación", "administrativo facturacion", "administrativo pagos",
+    "administrativo tesorería", "administrativo tesoreria", "administrativo sueldos",
+    "administrativo ventas", "administrativo inmobiliario", "administrativo rrhh",
+]
+
+# "administrativo" + puente tecnico/procesos: NO bloquea, y ademas habilita
+# la lista NORMAL de señal tecnica (DECISION_SENAL_TECNICA_SECUNDARIA,
+# incluye ERP) para decidir POSTULAR -- a diferencia de un "administrativo"
+# neutro (sin ninguna de estas frases), que exige la lista MAS ESTRICTA
+# _SENAL_TECNICA_ADMINISTRATIVO_FUERTE (sin ERP solo) para no repetir el
+# bug real de "Empleado administrativo" + ERP -> POSTULAR.
+_ADMINISTRATIVO_PUENTE_TECNICO = [
+    "administrativo sistemas", "administrativo de sistemas", "administrativo soporte",
+    "administrativo soporte técnico", "administrativo soporte tecnico",
+    "administrativo back office sistemas", "administrativo procesos",
+    "administrativo de procesos", "administrativo operaciones",
+    "administrativo data entry sistemas",
+]
+
+# Señal tecnica FUERTE, mas estricta que DECISION_SENAL_TECNICA_SECUNDARIA,
+# solo para "administrativo" NEUTRO (sin bloqueo ni puente explicito en el
+# titulo). A proposito NO incluye "erp"/"sistema"/"sistemas"/"datos" solos
+# -- eso es justo lo que dejaba pasar "Empleado administrativo" + ERP antes.
+_SENAL_TECNICA_ADMINISTRATIVO_FUERTE = [
+    "sql", "power bi", "bi", "reporting", "reportes", "dashboard", "dashboards",
+    "kpi", "macros", "automatización", "automatizacion", "automation",
+    "tickets", "incidencias", "soporte a usuarios",
+    "implementación de sistemas", "implementacion de sistemas",
+    "base de datos", "bases de datos",
 ]
 
 # Umbral: con esta cantidad o mas de keywords FUERTES matcheadas, se marca
@@ -1347,28 +1413,57 @@ def clasificar_decision(fila):
     No descarta nada: solo sugiere. Devuelve (decision_sugerida,
     motivo_decision, prioridad).
 
+    "El título manda": el texto usado aca NO incluye 'busqueda' (el
+    termino que se uso para ENCONTRAR el aviso, no contenido real del
+    aviso) -- evita que una busqueda como "analista de datos" rescate un
+    titulo como "Analista de cobranzas". La descripcion completa (segunda
+    pasada, ver ajustar_decision_por_descripcion) SI puede sumar señales
+    positivas, pero solo si el titulo no lo tiene ya bloqueado.
+
     POSTULAR requiere señales FUERTES (skills/roles tecnicos reales), no
     alcanza con contexto (ubicacion/modalidad/rubro) por si solo -- ver
     DECISION_POSTULAR_KEYWORDS_FUERTES / _CONTEXTO mas arriba."""
     texto = " ".join(str(fila.get(c, "") or "") for c in
-                      ("titulo", "empresa", "ubicacion", "modalidad", "busqueda")).lower()
+                      ("titulo", "empresa", "ubicacion", "modalidad")).lower()
 
-    descartar_hits = [kw for kw in DECISION_DESCARTAR_KEYWORDS + DECISION_RUBROS_EXCLUIDOS if kw in texto]
-    descartar_hits += _hits_seniority_abreviada(texto)
-    descartar_hits += _hits_liderazgo_decision(texto)
-    if descartar_hits:
-        return "DESCARTAR", f"excluido por: {', '.join(descartar_hits)}", 0
+    # Rubro (RRHH/comercial/marketing/tecnico-produccion no-IT/etc.) se
+    # chequea PRIMERO y en su propio return -- si un titulo como "Community
+    # Manager" matchea tanto un rubro excluido como un termino de
+    # liderazgo ("manager"), el motivo del reporte diario debe decir
+    # "rubro excluido", no "cargo de liderazgo" (razon real distinta,
+    # aunque ambas den DESCARTAR).
+    rubro_hits = [kw for kw in DECISION_DESCARTAR_KEYWORDS + DECISION_RUBROS_EXCLUIDOS
+                  + DECISION_RUBRO_TECNICO_NO_IT if kw in texto]
+    if rubro_hits:
+        return "DESCARTAR", f"excluido por: {', '.join(rubro_hits)}", 0
+
+    otros_descartar_hits = _hits_seniority_abreviada(texto) + _hits_liderazgo_decision(texto)
+    if otros_descartar_hits:
+        return "DESCARTAR", f"excluido por: {', '.join(otros_descartar_hits)}", 0
 
     fuertes_hits = [kw for kw in DECISION_POSTULAR_KEYWORDS_FUERTES if _matchea_keyword(kw, texto)]
     contexto_hits = [kw for kw in DECISION_POSTULAR_KEYWORDS_CONTEXTO if _matchea_keyword(kw, texto)]
     cant_fuertes = len(fuertes_hits)
 
-    # Cap final: si aparece un rubro bloqueado (administrativo/contable/
-    # comercial/inmobiliario/community manager/etc.), esta oferta no puede
-    # llegar a POSTULAR sin importar que categoria o cuantas FUERTES
-    # matchee -- ver DECISION_RUBROS_BLOQUEADOS_POSTULAR. No es un
-    # DESCARTAR (sigue visible en REVISAR para que Sergio decida a mano).
-    rubro_bloqueado_hits = [kw for kw in DECISION_RUBROS_BLOQUEADOS_POSTULAR if kw in texto]
+    # Cap final: si aparece un rubro bloqueado (contable/comercial/
+    # inmobiliario/community manager/"administrativo + rubro fuera de
+    # objetivo"/etc.), esta oferta no puede llegar a POSTULAR sin importar
+    # que categoria o cuantas FUERTES matchee -- ver
+    # DECISION_RUBROS_BLOQUEADOS_POSTULAR / _ADMINISTRATIVO_BLOQUEADO. No
+    # es un DESCARTAR (sigue visible en REVISAR para que Sergio decida a
+    # mano).
+    rubro_bloqueado_hits = [kw for kw in DECISION_RUBROS_BLOQUEADOS_POSTULAR + _ADMINISTRATIVO_BLOQUEADO
+                             if kw in texto]
+
+    # "administrativo" NEUTRO (sin bloqueo ni puente tecnico explicito en
+    # el titulo, ej. "Empleado administrativo") exige la lista de señal
+    # tecnica MAS ESTRICTA (sin ERP solo) para llegar a POSTULAR -- evita
+    # repetir "Empleado administrativo" + ERP -> POSTULAR. "administrativo"
+    # con puente (ej. "Administrativo Sistemas") usa la lista normal.
+    tiene_puente_administrativo = any(p in texto for p in _ADMINISTRATIVO_PUENTE_TECNICO)
+    es_administrativo_neutro = "administrativo" in texto and not tiene_puente_administrativo
+    lista_tecnica_secundaria = (_SENAL_TECNICA_ADMINISTRATIVO_FUERTE if es_administrativo_neutro
+                                 else DECISION_SENAL_TECNICA_SECUNDARIA)
 
     partes_motivo = []
     if fuertes_hits:
@@ -1382,14 +1477,21 @@ def clasificar_decision(fila):
     if categoria in CATEGORIAS_PRINCIPALES_IT:
         # Perfil objetivo (Data/BI, Soporte IT, QA/Testing, Desarrollo,
         # Analista Funcional): 2+ keywords FUERTES alcanzan, como antes.
-        motivo = " | ".join(partes_motivo) if partes_motivo else \
-            "sin señales claras en título/ubicación, revisar manualmente"
         if cant_fuertes >= DECISION_POSTULAR_MIN_MATCHES_FUERTES:
+            motivo = " | ".join(partes_motivo)
             if rubro_bloqueado_hits:
                 motivo += (f" | rubro bloqueado para POSTULAR automático "
                            f"({', '.join(rubro_bloqueado_hits)}) -> REVISAR")
                 return "REVISAR", motivo, prioridad
             return "POSTULAR", motivo, prioridad
+        # Le falta 1 (o mas) FUERTES para llegar al umbral -- marcador
+        # ESTABLE para que ajustar_decision_por_descripcion() pueda sumar
+        # FUERTES adicionales que aparezcan en la descripcion completa
+        # (ej. "Analista de Datos E-commerce" con SQL/Power BI recien en
+        # la descripcion) y completar el umbral.
+        partes_motivo.append("categoría principal con señales insuficientes en título -> REVISAR")
+        motivo = " | ".join(partes_motivo) if partes_motivo else \
+            "sin señales claras en título/ubicación, revisar manualmente"
         return "REVISAR", motivo, prioridad
 
     # Categoria secundaria (Supply Chain, Administrativo/Procesos, y por
@@ -1400,7 +1502,7 @@ def clasificar_decision(fila):
     # contexto haya. Sin eso, se queda en REVISAR (puede subir despues en
     # ajustar_decision_por_descripcion() si la descripcion completa trae
     # esa señal aunque el titulo no).
-    señal_tecnica = [kw for kw in DECISION_SENAL_TECNICA_SECUNDARIA if _matchea_keyword(kw, texto)]
+    señal_tecnica = [kw for kw in lista_tecnica_secundaria if _matchea_keyword(kw, texto)]
     señal_contexto_sec = [kw for kw in DECISION_SENAL_CONTEXTO_SECUNDARIA if _matchea_keyword(kw, texto)]
 
     if señal_tecnica:
@@ -1609,7 +1711,14 @@ CATEGORIAS_KEYWORDS = {
                                     "excel", "procesos", "facturación", "facturacion",
                                     "documentación", "documentacion",
                                     "coordinación administrativa", "coordinacion administrativa"],
-    "Técnico / Producción": ["técnico", "tecnico", "mecánico", "mecanico",
+    # "técnico"/"tecnico" sueltos se sacaron a proposito: son demasiado
+    # genericos y empataban con "Soporte IT" en titulos legitimos como
+    # "Soporte técnico nivel 1" (ambas categorias con 1 match -> Ambiguo,
+    # perdian la categoria principal real). El resto de estos terminos ya
+    # esta cubierto ademas por DECISION_RUBRO_TECNICO_NO_IT (DESCARTAR
+    # directo en la capa de decision), asi que sacar "técnico" de aca no
+    # afloja el bloqueo real.
+    "Técnico / Producción": ["mecánico", "mecanico",
                               "mantenimiento", "producción", "produccion",
                               "operario", "electromecánico", "electromecanico",
                               "industrial"],
@@ -1629,16 +1738,20 @@ CATEGORIA_AMBIGUO = "Ambiguo"
 
 def detectar_categoria(fila):
     """Etiqueta 'que tipo de puesto es' en base a titulo/empresa/ubicacion/
-    modalidad/busqueda + descripcion_resumen/alertas_aviso si existen
-    (pueden venir vacios si ANALIZAR_DESCRIPCION_DETALLE=False). Gana la
-    categoria con mas keywords matcheadas. Si 2+ categorias empatan en el
-    maximo, devuelve CATEGORIA_AMBIGUO (nunca se elige una por estar
-    primera en una lista). Sin matches -> 'Otro'. Usa _matchea_keyword()
-    para las keywords cortas/ambiguas (bi/ai/it/qa/sql) -- antes comparaba
-    substring crudo y "bi" matcheaba dentro de "inmobiliario", "ai" dentro
-    de "Buenos Aires", etc. Reglas simples, no toca decision_sugerida ni
-    prioridad."""
-    campos = ("titulo", "empresa", "ubicacion", "modalidad", "busqueda",
+    modalidad + descripcion_resumen/alertas_aviso si existen (pueden venir
+    vacios si ANALIZAR_DESCRIPCION_DETALLE=False). A proposito NO incluye
+    'busqueda' (el termino que se uso para ENCONTRAR el aviso, no contenido
+    real del aviso): "el titulo manda", la busqueda no debe poder cambiar
+    la categoria de una oferta cuyo titulo indica otra cosa (ej. "Analista
+    de cobranzas" encontrado con la busqueda "analista de datos" no debe
+    categorizar como Data/BI). Gana la categoria con mas keywords
+    matcheadas. Si 2+ categorias empatan en el maximo, devuelve
+    CATEGORIA_AMBIGUO (nunca se elige una por estar primera en una lista).
+    Sin matches -> 'Otro'. Usa _matchea_keyword() para las keywords
+    cortas/ambiguas (bi/ai/it/qa/sql) -- antes comparaba substring crudo y
+    "bi" matcheaba dentro de "inmobiliario", "ai" dentro de "Buenos Aires",
+    etc. Reglas simples, no toca decision_sugerida ni prioridad."""
+    campos = ("titulo", "empresa", "ubicacion", "modalidad",
               "descripcion_resumen", "alertas_aviso")
     texto = " ".join(str(fila.get(c, "") or "") for c in campos).lower()
 
@@ -1792,6 +1905,17 @@ def ajustar_decision_por_descripcion(fila):
     if not texto:
         return decision, motivo, prioridad
 
+    # Mismo criterio "administrativo neutro vs con puente tecnico" que en
+    # clasificar_decision(), evaluado sobre el TITULO (no la descripcion):
+    # el titulo sigue mandando para decidir que tan estricta es la señal
+    # tecnica que hace falta, aunque la señal en si pueda venir de la
+    # descripcion.
+    texto_titulo = " ".join(str(fila.get(c, "") or "") for c in ("titulo", "empresa")).lower()
+    tiene_puente_administrativo = any(p in texto_titulo for p in _ADMINISTRATIVO_PUENTE_TECNICO)
+    es_administrativo_neutro = "administrativo" in texto_titulo and not tiene_puente_administrativo
+    lista_tecnica_secundaria = (_SENAL_TECNICA_ADMINISTRATIVO_FUERTE if es_administrativo_neutro
+                                 else DECISION_SENAL_TECNICA_SECUNDARIA)
+
     ajustes = []
     hits_seniority = (sum(1 for kw in _ALERTAS_SENIORIDAD if kw in texto)
                        + len(_hits_seniority_abreviada(texto)))
@@ -1805,34 +1929,39 @@ def ajustar_decision_por_descripcion(fila):
         ajustes.append("bajado a REVISAR: la descripción pide algo de seniority que el título no dejaba ver")
         decision = "REVISAR"
 
-    # Cargo de liderazgo/jerarquia que el TITULO no dejaba ver pero la
-    # descripcion si revela (ej. "buscamos un Team Leader para..."). Mismos
-    # patrones con \b que en clasificar_decision(), ver
-    # _PATRONES_LIDERAZGO_DECISION.
-    hits_liderazgo_desc = _hits_liderazgo_decision(texto)
-    if hits_liderazgo_desc and decision != "DESCARTAR":
-        ajustes.append(
-            f"bajado a DESCARTAR: cargo de liderazgo/jerarquía detectado en la descripción "
-            f"({', '.join(hits_liderazgo_desc)})"
-        )
-        decision = "DESCARTAR"
-
-    # Rubro excluido (RRHH/reclutamiento/call center/etc.) que el TITULO no
-    # dejaba ver pero la descripcion si revela -- ej. "Analista de
-    # screening" con "Call Center" solo en el texto completo. Corre ANTES
-    # del bloque de "sube a POSTULAR por señal tecnica" de abajo para que
-    # nunca suba: si la descripcion tiene rubro excluido, sql/erp/sistema/
-    # datos ahi probablemente describen herramientas internas de la
-    # empresa, no el rol que se ofrece.
+    # Rubro excluido (RRHH/reclutamiento/call center/marketing/tecnico-
+    # produccion no-IT/etc.) que el TITULO no dejaba ver pero la
+    # descripcion si revela -- ej. "Analista de screening" con "Call
+    # Center" solo en el texto completo. Corre ANTES que liderazgo y ANTES
+    # del bloque de "sube a POSTULAR por señal tecnica" de abajo: si la
+    # descripcion tiene rubro excluido, sql/erp/sistema/datos ahi
+    # probablemente describen herramientas internas de la empresa, no el
+    # rol que se ofrece -- y el motivo del reporte diario debe decir
+    # "rubro excluido", no "cargo de liderazgo", si aplican ambos (ej.
+    # "Community Manager").
     # Usa la lista ESTRICTA (no DECISION_DESCARTAR_KEYWORDS/RUBROS_EXCLUIDOS
     # completas): la pagina cruda trae disclaimer/avisos relacionados/verbos
     # genericos que generan falsos positivos con terminos cortos como
     # "reclutador"/"talento"/"recursos humanos"/"seleccion" sueltas -- ver
     # comentario de DECISION_RUBROS_EXCLUIDOS_DESCRIPCION mas arriba.
-    rubro_excluido_hits = [kw for kw in DECISION_RUBROS_EXCLUIDOS_DESCRIPCION if kw in texto]
+    rubro_excluido_hits = [kw for kw in DECISION_RUBROS_EXCLUIDOS_DESCRIPCION + DECISION_RUBRO_TECNICO_NO_IT
+                            if kw in texto]
     if rubro_excluido_hits and decision != "DESCARTAR":
         ajustes.append(
             f"descartado por descripción: rubro excluido detectado ({', '.join(rubro_excluido_hits)})"
+        )
+        decision = "DESCARTAR"
+
+    # Cargo de liderazgo/jerarquia que el TITULO no dejaba ver pero la
+    # descripcion si revela (ej. "buscamos un Team Leader para..."). Mismos
+    # patrones con \b que en clasificar_decision(), ver
+    # _PATRONES_LIDERAZGO_DECISION. Corre DESPUES del rubro excluido a
+    # proposito (ver comentario de arriba).
+    hits_liderazgo_desc = _hits_liderazgo_decision(texto)
+    if hits_liderazgo_desc and decision != "DESCARTAR":
+        ajustes.append(
+            f"bajado a DESCARTAR: cargo de liderazgo/jerarquía detectado en la descripción "
+            f"({', '.join(hits_liderazgo_desc)})"
         )
         decision = "DESCARTAR"
 
@@ -1843,7 +1972,7 @@ def ajustar_decision_por_descripcion(fila):
     # DESCARTAR por seniority (ese chequeo ya corrio, tiene prioridad).
     if (decision == "REVISAR" and "categoría secundaria" in motivo
             and "sin señal técnica real en título" in motivo):
-        señal_tecnica_desc = [kw for kw in DECISION_SENAL_TECNICA_SECUNDARIA
+        señal_tecnica_desc = [kw for kw in lista_tecnica_secundaria
                                if _matchea_keyword(kw, texto)]
         if señal_tecnica_desc:
             decision = "POSTULAR"
@@ -1852,15 +1981,37 @@ def ajustar_decision_por_descripcion(fila):
                 f"({', '.join(señal_tecnica_desc)}) para esta categoría secundaria"
             )
 
-    # Mismo cap de DECISION_RUBROS_BLOQUEADOS_POSTULAR que en
-    # clasificar_decision(), pero re-chequeado con la descripcion completa
-    # -- por si el titulo no lo mostraba pero el aviso real si es
+    # Categoria PRINCIPAL (Data/BI, Soporte IT, etc.) a la que le faltaba
+    # 1+ FUERTES en el titulo (marcador de clasificar_decision()): si la
+    # descripcion completa trae mas keywords FUERTES que, sumadas a las del
+    # titulo, completan el umbral, sube a POSTULAR. Ej. "Analista de Datos
+    # E-commerce" (1 fuerte: "analista de datos") + descripcion con "SQL"/
+    # "Power BI" (2 fuertes mas) -- el titulo no contradice el objetivo,
+    # asi que la descripcion puede sumar.
+    if (decision == "REVISAR"
+            and "categoría principal con señales insuficientes en título" in motivo):
+        fuertes_titulo = [kw for kw in DECISION_POSTULAR_KEYWORDS_FUERTES
+                           if _matchea_keyword(kw, texto_titulo)]
+        fuertes_desc_extra = [kw for kw in DECISION_POSTULAR_KEYWORDS_FUERTES
+                               if kw not in fuertes_titulo and _matchea_keyword(kw, texto)]
+        if len(fuertes_titulo) + len(fuertes_desc_extra) >= DECISION_POSTULAR_MIN_MATCHES_FUERTES:
+            decision = "POSTULAR"
+            ajustes.append(
+                "subido a POSTULAR: la descripción trae señales fuertes adicionales "
+                f"({', '.join(fuertes_desc_extra)}) que completan el umbral junto con "
+                f"el título ({', '.join(fuertes_titulo) if fuertes_titulo else 'sin fuertes en título'})"
+            )
+
+    # Mismo cap de DECISION_RUBROS_BLOQUEADOS_POSTULAR/_ADMINISTRATIVO_BLOQUEADO
+    # que en clasificar_decision(), pero re-chequeado con la descripcion
+    # completa -- por si el titulo no lo mostraba pero el aviso real si es
     # administrativo/contable/comercial/etc. Nunca DESCARTA, solo evita que
     # llegue a POSTULAR (cap conservador: en el peor caso queda en REVISAR
     # de mas, visible para que Sergio la vea a mano -- no en un descarte ni
     # un envio silencioso).
     if decision == "POSTULAR":
-        rubro_bloqueado_desc = [kw for kw in DECISION_RUBROS_BLOQUEADOS_POSTULAR if kw in texto]
+        rubro_bloqueado_desc = [kw for kw in DECISION_RUBROS_BLOQUEADOS_POSTULAR + _ADMINISTRATIVO_BLOQUEADO
+                                 if kw in texto]
         if rubro_bloqueado_desc:
             decision = "REVISAR"
             ajustes.append(
