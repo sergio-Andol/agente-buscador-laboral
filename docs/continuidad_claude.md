@@ -106,6 +106,47 @@ decida disparar la prueba de verdad.
 
 ## 6. Cambios recientes (más nuevo primero)
 
+- **Veto duro por título ampliado: rubros inmobiliario/contable/comercial/
+  salud/técnico-eléctrico/compras específicos → DESCARTAR directo, sin
+  rescate por descripción.**
+  - *Por qué*: la hoja seguía dejando pasar puestos claramente fuera de
+    objetivo a REVISAR (visible en ACCIONES). Sergio pidió que el título
+    solo, si matchea un rubro claramente fuera de objetivo, DESCARTE
+    directo — sin importar que la descripción tenga ERP/Excel/datos/
+    sistemas/reporting/Power BI/SQL/Python.
+  - *Fix aplicado*: nueva lista `DECISION_VETO_TITULO_DURO` (inmobiliario,
+    contable/financiero/auditoría/compliance/impuestos/pagos/facturación/
+    sueldos/tesorería, comercial/ventas/fidelización/retención,
+    recepcionista/centro médico/salud, auxiliar de compras/comercio
+    exterior/comex/inbound, técnico eléctrico) — se suma al chequeo tier-1
+    de `clasificar_decision()` (el que corre primero, antes de cualquier
+    rescate) y también al gate final `_postulacion_es_segura()` (defensa
+    en profundidad). La seniority (semi senior/sr/ssr) ya estaba cubierta
+    por `_hits_seniority_abreviada()`, sin cambios ahí.
+  - **Tensión encontrada y resuelta sin romper nada previo**: la lista que
+    pidió Sergio incluía `"compras"` y `"logística"`/`"logistica"` sueltas
+    — pero esas son las mismas palabras que ya validamos que "Analista de
+    Compras y Abastecimiento" + ERP debe poder llegar a POSTULAR (sesión
+    anterior, con tests que seguían pasando). Se optó por **NO** agregar
+    esas 2 palabras sueltas al veto duro — solo se agregaron las frases
+    específicas pedidas que no chocan con ese caso ("auxiliar de
+    compras", "comercio exterior", "comex", "inbound"). Se dejó
+    documentado en el código y se avisó explícitamente a Sergio en el
+    chat antes de implementar.
+  - *Qué se probó*: `py -3.14 -m py_compile` → compila. Los 12 casos
+    DESCARTAR + 7 casos que NO deben descartarse por esta regla (de la
+    captura de Sergio) → los 19 correctos. Regresión de 14 tests
+    anteriores → 0 fallos. **Verificado explícitamente que "Analista de
+    Compras y Abastecimiento" + ERP en la descripción sigue llegando a
+    POSTULAR** (no se rompió por el veto nuevo).
+  - *No se tocó*: postulación real, `DRY_RUN_POSTULACION`, `truststore`,
+    historial. No se corrió el buscador completo.
+  - *Pendiente de confirmar con Sergio*: si en algún momento quiere
+    endurecer también `"compras"`/`"logística"` sueltas (lo que
+    efectivamente eliminaría la categoría Supply Chain de POSTULAR salvo
+    títulos que no mencionen esas palabras), avisar antes de tocarlo — es
+    un cambio de alcance mayor al pedido de hoy.
+
 - **2 ajustes finos tras revisar `trabajos_2026-07-15_20-45-08.xlsx`
   (POSTULAR: 0, REVISAR: 3, DESCARTAR: 24 — muy buen resultado general).**
   - *Ajuste 1*: "Técnico instalador De baterias" quedaba en REVISAR

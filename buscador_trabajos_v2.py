@@ -385,7 +385,46 @@ DECISION_RUBRO_TECNICO_NO_IT = [
     "batería", "baterías", "bateria", "baterias",
     "producción", "produccion", "electricista",
     "mecánico", "mecanico", "electromecánico", "electromecanico",
-    "mantenimiento",
+    "mantenimiento", "técnico eléctrico", "tecnico electrico",
+]
+
+# Veto DURO por titulo: rubros claramente fuera del objetivo IT/Data/
+# Soporte que deben DESCARTAR sin importar que aparezca ERP/Excel/datos/
+# sistemas/reporting/Power BI/SQL/Python en la descripcion -- ver
+# clasificar_decision(), corre en el primer chequeo (rubro_hits), ANTES de
+# cualquier rescate por descripcion. Muchos de estos terminos ya estaban
+# en DECISION_RUBROS_BLOQUEADOS_POSTULAR (que solo CAPEA a REVISAR, no
+# descarta) -- se listan aca de nuevo a proposito porque ahora deben
+# descartar directo, no quedar disponibles para revision manual.
+#
+# OJO -- "compras"/"logística"/"logistica"/"almacén"/"almacen"/"depósito"/
+# "deposito" sueltos NO estan aca a proposito: son las mismas palabras que
+# ya validamos que "Analista de Compras y Abastecimiento" + ERP debe poder
+# llegar a POSTULAR (sesion anterior, con tests que siguen pasando). Si se
+# agregan aca sueltas, ese caso (y todo Supply Chain con señal tecnica
+# real) vuelve a quedar bloqueado sin excepcion. Se agregan solo las
+# frases especificas pedidas ("auxiliar de compras", "comercio exterior",
+# "comex", "inbound") que no chocan con ese caso.
+DECISION_VETO_TITULO_DURO = [
+    # Inmobiliario
+    "inmobiliario", "inmobiliaria", "agente inmobiliario",
+    "desarrollos inmobiliarios",
+    # Contable / financiero / administracion no IT
+    "contable", "contabilidad", "financiero", "finanzas",
+    "auditoría interna", "auditoria interna", "compliance",
+    "impuestos", "impositivo", "cuentas a pagar", "cuentas a cobrar",
+    "pagos", "facturación", "facturacion", "sueldos",
+    "liquidación de sueldos", "liquidacion de sueldos",
+    "tesorería", "tesoreria",
+    # Comercial / ventas
+    "comercial", "ventas", "asesor comercial", "ejecutivo comercial",
+    "representante comercial", "fidelización", "fidelizacion",
+    "retención", "retencion",
+    # Salud / recepcion
+    "recepcionista", "centro médico", "centro medico",
+    "administrativo de salud", "salud",
+    # Compras / logistica NO tecnico -- frases especificas, ver nota arriba
+    "auxiliar de compras", "comercio exterior", "comex", "inbound",
 ]
 
 # Version ESTRICTA de rubro excluido, solo para re-chequear contra la
@@ -1433,7 +1472,7 @@ def clasificar_decision(fila):
     # "rubro excluido", no "cargo de liderazgo" (razon real distinta,
     # aunque ambas den DESCARTAR).
     rubro_hits = [kw for kw in DECISION_DESCARTAR_KEYWORDS + DECISION_RUBROS_EXCLUIDOS
-                  + DECISION_RUBRO_TECNICO_NO_IT if kw in texto]
+                  + DECISION_RUBRO_TECNICO_NO_IT + DECISION_VETO_TITULO_DURO if kw in texto]
     if rubro_hits:
         return "DESCARTAR", f"excluido por: {', '.join(rubro_hits)}", 0
 
@@ -2217,6 +2256,7 @@ def _postulacion_es_segura(fila):
     texto_completo = texto_titulo + " " + alertas
 
     rubro_hits = [kw for kw in DECISION_DESCARTAR_KEYWORDS + DECISION_RUBROS_EXCLUIDOS
+                  + DECISION_RUBRO_TECNICO_NO_IT + DECISION_VETO_TITULO_DURO
                   if kw in texto_completo]
     if rubro_hits:
         return False, f"rubro excluido o alerta de descarte detectada: {', '.join(rubro_hits)}"
