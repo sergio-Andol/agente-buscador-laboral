@@ -1,6 +1,6 @@
 # Continuidad del proyecto — Agente Buscador Laboral
 
-> Handoff para una nueva sesión de Claude Code. Última actualización: 2026-07-13.
+> Handoff para una nueva sesión de Claude Code. Última actualización: 2026-07-16.
 > Regla de mantenimiento: actualizar esta sección al tope con cada cambio funcional
 > importante (qué se cambió / por qué / qué se probó / qué quedó pendiente /
 > advertencias de seguridad). No hace falta por cambios de estilo o comentarios.
@@ -105,6 +105,28 @@ decida disparar la prueba de verdad.
 - **Postulación asistida/automática segura** — ver sección 7.
 
 ## 6. Cambios recientes (más nuevo primero)
+
+- **Fix: "Top recomendadas" mostraba ofertas DESCARTAR cuando POSTULAR=0
+  y REVISAR=0.**
+  - *Por qué*: el cartel/resumen final (consola y hoja RESUMEN del Excel)
+    tomaba `nuevas.head(5)` sin filtrar por decisión — si todas las
+    ofertas de la corrida eran DESCARTAR, igual mostraba las primeras 5
+    bajo el título "Top recomendadas", confundiendo (parecía que esas
+    ofertas eran buenas).
+  - *Fix aplicado*: en los 2 lugares donde se arma el top 5 (corrida real
+    y modo DEMO) se filtra primero `nuevas[decision_sugerida.isin(["POSTULAR","REVISAR"])]`
+    y recién ahí se toma `.head(5)`. Si el resultado queda vacío, el
+    mensaje pasa a ser **"No hay ofertas recomendadas en esta corrida."**
+    (antes decía "(sin ofertas)", tanto en consola como en la hoja
+    RESUMEN del Excel).
+  - *Qué se probó*: `py -3.14 -m py_compile` → compila. Simulado un
+    DataFrame con 3 ofertas todas DESCARTAR → 0 candidatas, mensaje
+    correcto. Simulado un DataFrame mixto (2 DESCARTAR + 1 REVISAR) → solo
+    la REVISAR queda seleccionada, las DESCARTAR quedan afuera.
+  - *No se tocó*: lógica de clasificación (`clasificar_decision`,
+    `detectar_categoria`, ningún veto/rescate), `DRY_RUN_POSTULACION`,
+    otros proyectos (`Agente-CV-Laboral` ni `agente_whatsapp_cloudflare`
+    — ninguno de los dos se tocó). No se corrió el buscador completo.
 
 - **Veto duro por título ampliado: rubros inmobiliario/contable/comercial/
   salud/técnico-eléctrico/compras específicos → DESCARTAR directo, sin

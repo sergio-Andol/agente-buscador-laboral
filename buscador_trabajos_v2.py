@@ -2845,7 +2845,7 @@ def crear_hoja_resumen(writer, datos_resumen):
 
     top5 = datos_resumen.get("top5") or []
     if not top5:
-        ws.cell(row=fila, column=1, value="(sin ofertas)")
+        ws.cell(row=fila, column=1, value="No hay ofertas recomendadas en esta corrida.")
     for item in top5:
         ws.cell(row=fila, column=1, value=item["n"])
         ws.cell(row=fila, column=2, value=item["titulo"])
@@ -3034,8 +3034,13 @@ def _ejecutar_modo_demo(inicio_ejecucion):
     nuevas["categoria_detectada"] = nuevas.apply(detectar_categoria, axis=1)
     cant_postular = conteo_decision.get("POSTULAR", 0)
 
+    # Solo POSTULAR/REVISAR pueden aparecer como "Top recomendadas" -- antes
+    # se tomaban las primeras 5 filas de 'nuevas' sin filtrar, asi que con
+    # POSTULAR=0 y REVISAR=0 el cartel mostraba ofertas DESCARTAR como si
+    # fueran recomendadas (confuso).
+    candidatas_top5 = nuevas[nuevas["decision_sugerida"].isin(["POSTULAR", "REVISAR"])]
     top5_lineas, top5_items = [], []
-    for i, (_, fila) in enumerate(nuevas.head(5).iterrows(), start=1):
+    for i, (_, fila) in enumerate(candidatas_top5.head(5).iterrows(), start=1):
         top5_lineas.append(
             f"{i}. {fila['titulo']} - {fila['empresa']} - "
             f"{fila['fuente']} - {fila['decision_sugerida']} - {fila['categoria_detectada']}"
@@ -3045,7 +3050,7 @@ def _ejecutar_modo_demo(inicio_ejecucion):
             "fuente": fila["fuente"], "decision": fila["decision_sugerida"],
             "categoria": fila["categoria_detectada"],
         })
-    top5_texto = "\n".join(top5_lineas) if top5_lineas else "(sin ofertas)"
+    top5_texto = "\n".join(top5_lineas) if top5_lineas else "No hay ofertas recomendadas en esta corrida."
 
     # --- bandeja de acciones: solo sugiere, no postula ni envia nada -----
     # (los links de DEMO son ficticios: no se procesa postulacion sobre
@@ -3341,10 +3346,14 @@ def main():
     # --- top 5: se calcula ACA (antes del Excel) porque tambien lo usa
     #     la hoja RESUMEN, ademas del mensaje final de mas abajo.
     #     'nuevas' ya viene ordenada (decision_sugerida, prioridad,
-    #     relevancia), asi que el top 5 es directamente head(5).
+    #     relevancia). Solo POSTULAR/REVISAR pueden aparecer como "Top
+    #     recomendadas" -- antes se tomaba head(5) sin filtrar, asi que con
+    #     POSTULAR=0 y REVISAR=0 el cartel mostraba ofertas DESCARTAR como
+    #     si fueran recomendadas (confuso).
+    candidatas_top5 = nuevas[nuevas["decision_sugerida"].isin(["POSTULAR", "REVISAR"])]
     top5_lineas = []
     top5_items = []
-    for i, (_, fila) in enumerate(nuevas.head(5).iterrows(), start=1):
+    for i, (_, fila) in enumerate(candidatas_top5.head(5).iterrows(), start=1):
         top5_lineas.append(
             f"{i}. {fila['titulo']} - {fila['empresa']} - "
             f"{fila['fuente']} - {fila['decision_sugerida']} - {fila['categoria_detectada']}"
@@ -3354,7 +3363,7 @@ def main():
             "fuente": fila["fuente"], "decision": fila["decision_sugerida"],
             "categoria": fila["categoria_detectada"],
         })
-    top5_texto = "\n".join(top5_lineas) if top5_lineas else "(sin ofertas)"
+    top5_texto = "\n".join(top5_lineas) if top5_lineas else "No hay ofertas recomendadas en esta corrida."
 
     fecha = datetime.date.today().isoformat()
     # fecha+hora en el nombre del archivo del dia: si corro el script varias
